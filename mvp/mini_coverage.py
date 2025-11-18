@@ -24,7 +24,8 @@ class MiniCoverage:
         # 1. Only track files in the current project directory
         # 2. Don't track the coverage tool itself
         if (filename.startswith(self.project_root) and
-                not filename.endswith("mini_coverage.py")):
+                not filename.endswith("mini_coverage.py") and
+                not filename.endswith("test_coverage.py")):  # Don't track the test runner
             self.executed_lines[filename].add(frame.f_lineno)
 
         return self.trace_function
@@ -62,7 +63,11 @@ class MiniCoverage:
         Loads and executes the target script under the trace hook.
         """
         # 1. Prepare the environment to look like the script is running directly
-        sys.argv = [script_path] + sys.argv[2:]  # Adjust argv so target script sees its own args
+        # Save original argv/path to restore later
+        original_argv = sys.argv
+        original_path = sys.path[:]
+
+        sys.argv = [script_path] + sys.argv[2:]
         script_dir = os.path.dirname(os.path.abspath(script_path))
         sys.path.insert(0, script_dir)
 
@@ -77,13 +82,31 @@ class MiniCoverage:
             # 4. Execute (in a localized global scope)
             exec(code, {'__name__': '__main__', '__file__': script_path})
         except SystemExit:
-            # Allow scripts to exit gracefully
             pass
         except Exception as e:
             print(f"\n[!] Script raised an exception: {e}")
         finally:
-            # 5. Stop Tracing even if script crashes
+            # 5. Stop Tracing
             sys.settrace(None)
+            # Restore environment
+            sys.argv = original_argv
+            sys.path = original_path
+
+    def analyze_file(self, filename):
+        """
+        Helper to calculate stats for a single file.
+        Returns: (coverage_percentage, set_of_missing_lines)
+        """
+        abs_path = os.path.abspath(filename)
+        executed = self.executed_lines.get(abs_path, set())
+        possible = self.get_executable_lines(abs_path)
+
+        missing = possible - executed
+
+        if not possible:
+            return 0.0, missing
+
+        return (len(executed) / len(possible)) * 100, missing
 
     def report(self):
         print("\n" + "=" * 40)
@@ -91,22 +114,12 @@ class MiniCoverage:
         print("-" * 40)
 
         for filename, executed in self.executed_lines.items():
-            # Get the set of all possible executable lines using AST
-            possible = self.get_executable_lines(filename)
-
-            # Missing lines = Possible - Executed
-            missing = possible - executed
-
-            # Clean up math for empty files
-            if not possible:
-                coverage = 0.0
-            else:
-                coverage = (len(executed) / len(possible)) * 100
+            percentage, missing = self.analyze_file(filename)
 
             rel_name = os.path.basename(filename)
             missing_str = ",".join(map(str, sorted(missing))) if missing else "-"
 
-            print(f"{rel_name:<20} | {coverage:>5.0f}% | {missing_str}")
+            print(f"{rel_name:<20} | {percentage:>5.0f}% | {missing_str}")
         print("=" * 40)
 
 
