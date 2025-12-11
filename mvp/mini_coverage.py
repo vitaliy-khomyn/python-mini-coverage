@@ -4,102 +4,152 @@ import ast
 import collections
 
 
+class SourceAnalyzer:
+    """
+    Responsible for Static Analysis: parsing source code to determine
+    what 'could' be executed (lines, and in future: branches, conditions).
+    """
+
+    def get_executable_lines(self, filename):
+        """
+        Parses python code to find lines that are actual code.
+        """
+        executable_lines = set()
+        try:
+            with open(filename, 'r') as f:
+                source = f.read()
+            tree = ast.parse(source)
+        except (SyntaxError, OSError):
+            return set()
+
+        for node in ast.walk(tree):
+            if self._is_executable_node(node):
+                executable_lines.add(node.lineno)
+        return executable_lines
+
+    def _is_executable_node(self, node):
+        """
+        Determines if an AST node represents an executable statement.
+        """
+        if not isinstance(node, ast.stmt):
+            return False
+
+        # Ignore standalone docstrings or constant strings
+        if isinstance(node, ast.Expr) and isinstance(node.value, (ast.Str, ast.Constant)):
+            return False
+
+        # Ensure the node actually has a line number
+        if not hasattr(node, 'lineno'):
+            return False
+
+        return True
+
+
+class ConsoleReporter:
+    """
+    Responsible for Presentation: formatting and displaying coverage results.
+    """
+
+    def print_report(self, coverage_stats, project_root):
+        """
+        Prints a summary report to stdout.
+        coverage_stats: Dict of {filename: (percentage, missing_lines)}
+        """
+        print("\n" + "=" * 60)
+        print(f"{'File':<25} | {'Cov%':<6} | {'Missing Lines'}")
+        print("-" * 60)
+
+        # Sort files for consistent output
+        sorted_files = sorted(coverage_stats.keys())
+
+        for filename in sorted_files:
+            percentage, missing = coverage_stats[filename]
+            self._print_file_report(filename, percentage, missing, project_root)
+
+        print("=" * 60)
+
+    def _print_file_report(self, filename, percentage, missing, project_root):
+        rel_name = os.path.relpath(filename, project_root)
+
+        # Compress missing lines for display
+        missing_list = sorted(list(missing))
+        if not missing_list:
+            missing_str = ""
+        elif len(missing_list) < 10:
+            missing_str = ", ".join(map(str, missing_list))
+        else:
+            missing_str = f"{len(missing_list)} lines missed"
+
+        print(f"{rel_name:<25} | {percentage:>5.0f}% | {missing_str}")
+
+
 class MiniCoverage:
-    def __init__(self):
-        # Stores {filename: {set_of_executed_line_numbers}}
+    def __init__(self, project_root=None, excluded_files=None):
+        """
+        Initialize the coverage tool.
+        """
+        self.project_root = os.path.abspath(project_root) if project_root else os.getcwd()
         self.executed_lines = collections.defaultdict(set)
-        self.project_root = os.getcwd()
+
+        # Composition: Helpers for Analysis and Reporting
+        self.analyzer = SourceAnalyzer()
+        self.reporter = ConsoleReporter()
+
+        self._cache_traceable = {}
+        self.excluded_files = self._build_exclusion_set(excluded_files)
+
+    def _build_exclusion_set(self, user_excludes):
+        excludes = set()
+        if user_excludes:
+            for f in user_excludes:
+                excludes.add(os.path.abspath(f))
+
+        # Automatically exclude the tool itself
+        excludes.add(os.path.abspath(__file__))
+        return excludes
 
     def trace_function(self, frame, event, arg):
         """
-        The hook called by Python for every line executed.
+        The system trace function called by Python.
         """
         if event != 'line':
             return self.trace_function
 
-        co = frame.f_code
-        filename = os.path.abspath(co.co_filename)
+        filename = frame.f_code.co_filename
 
-        # FILTERING:
-        # 1. Only track files in the current project directory
-        # 2. Don't track the coverage tool itself
-        if (filename.startswith(self.project_root) and
-                not filename.endswith("mini_coverage.py") and
-                not filename.endswith("test_coverage.py")):  # Don't track the test runner
+        # Optimization: Check cache first to avoid repetitive path operations in hot path
+        if filename not in self._cache_traceable:
+            self._cache_traceable[filename] = self._should_trace(filename)
+
+        if self._cache_traceable[filename]:
             self.executed_lines[filename].add(frame.f_lineno)
 
         return self.trace_function
 
-    def get_executable_lines(self, filename):
+    def _should_trace(self, filename):
         """
-        Uses AST (Abstract Syntax Tree) to find lines that *could* be executed.
-        This ignores comments, docstrings, and blank lines.
+        Determines if a file should be tracked based on root and exclusions.
         """
-        executable_lines = set()
+        abs_path = os.path.abspath(filename)
 
-        with open(filename, 'r') as f:
-            source = f.read()
+        # Rule 1: Must be inside the project root
+        if not abs_path.startswith(self.project_root):
+            return False
 
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:
-            return set()
+        # Rule 2: Must not be in the exclusion list
+        if abs_path in self.excluded_files:
+            return False
 
-        # Walk the tree and find all statements
-        for node in ast.walk(tree):
-            # We only care about statements (assignments, calls, loops, etc.)
-            if isinstance(node, (ast.stmt, ast.expr)):
-                # Some nodes (like multi-line strings) might span lines;
-                # usually we just care about the start line.
-                if hasattr(node, 'lineno'):
-                    executable_lines.add(node.lineno)
-
-        # Remove class/func definitions from executable count (optional preference,
-        # but standard tools usually count the def line as executable)
-        return executable_lines
-
-    def run(self, script_path):
-        """
-        Loads and executes the target script under the trace hook.
-        """
-        # 1. Prepare the environment to look like the script is running directly
-        # Save original argv/path to restore later
-        original_argv = sys.argv
-        original_path = sys.path[:]
-
-        sys.argv = [script_path] + sys.argv[2:]
-        script_dir = os.path.dirname(os.path.abspath(script_path))
-        sys.path.insert(0, script_dir)
-
-        # 2. Read the code
-        with open(script_path, 'rb') as f:
-            code = compile(f.read(), script_path, 'exec')
-
-        # 3. Start Tracing
-        sys.settrace(self.trace_function)
-
-        try:
-            # 4. Execute (in a localized global scope)
-            exec(code, {'__name__': '__main__', '__file__': script_path})
-        except SystemExit:
-            pass
-        except Exception as e:
-            print(f"\n[!] Script raised an exception: {e}")
-        finally:
-            # 5. Stop Tracing
-            sys.settrace(None)
-            # Restore environment
-            sys.argv = original_argv
-            sys.path = original_path
+        return True
 
     def analyze_file(self, filename):
         """
-        Helper to calculate stats for a single file.
+        Calculates coverage statistics for a specific file.
         Returns: (coverage_percentage, set_of_missing_lines)
         """
         abs_path = os.path.abspath(filename)
         executed = self.executed_lines.get(abs_path, set())
-        possible = self.get_executable_lines(abs_path)
+        possible = self.analyzer.get_executable_lines(abs_path)
 
         missing = possible - executed
 
@@ -108,28 +158,65 @@ class MiniCoverage:
 
         return (len(executed) / len(possible)) * 100, missing
 
+    def run(self, script_path, script_args=None):
+        """
+        Runs the target script with coverage tracking.
+        """
+        abs_script_path = os.path.abspath(script_path)
+        script_dir = os.path.dirname(abs_script_path)
+
+        # Prepare environment
+        original_argv = sys.argv
+        original_path = sys.path[:]
+
+        # Set sys.argv to [script_name, ...args]
+        sys.argv = [script_path] + (script_args if script_args else [])
+        sys.path.insert(0, script_dir)
+
+        try:
+            with open(abs_script_path, 'rb') as f:
+                code = compile(f.read(), abs_script_path, 'exec')
+
+            sys.settrace(self.trace_function)
+
+            # Use a dictionary for globals to avoid polluting the tool's namespace
+            exec_globals = {
+                '__name__': '__main__',
+                '__file__': abs_script_path,
+                '__builtins__': __builtins__
+            }
+
+            exec(code, exec_globals)
+
+        except SystemExit:
+            pass  # Expected behavior for many scripts
+        except Exception as e:
+            print(f"\n[!] Exception during execution: {e}")
+        finally:
+            sys.settrace(None)
+            sys.argv = original_argv
+            sys.path = original_path
+
     def report(self):
-        print("\n" + "=" * 40)
-        print(f"{'File':<20} | {'Cov%':<6} | {'Missing Lines'}")
-        print("-" * 40)
+        """
+        Orchestrates the reporting process.
+        """
+        stats = {}
+        # Calculate stats for all tracked files
+        for filename in self.executed_lines.keys():
+            stats[filename] = self.analyze_file(filename)
 
-        for filename, executed in self.executed_lines.items():
-            percentage, missing = self.analyze_file(filename)
-
-            rel_name = os.path.basename(filename)
-            missing_str = ",".join(map(str, sorted(missing))) if missing else "-"
-
-            print(f"{rel_name:<20} | {percentage:>5.0f}% | {missing_str}")
-        print("=" * 40)
+        self.reporter.print_report(stats, self.project_root)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python mini_coverage.py <script_to_run.py> [args]")
+        print("Usage: python mini_coverage.py <script_to_run.py> [args...]")
         sys.exit(1)
 
-    target_script = sys.argv[1]
+    target = sys.argv[1]
+    args = sys.argv[2:]
 
     cov = MiniCoverage()
-    cov.run(target_script)
+    cov.run(target, args)
     cov.report()
