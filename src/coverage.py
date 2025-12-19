@@ -2,6 +2,7 @@ import sys
 import os
 import ast
 import collections
+import threading
 
 
 # --- 1. Shared Utilities ---
@@ -64,7 +65,7 @@ class StatementCoverage(CoverageMetric):
         for node in ast.walk(ast_tree):
             if isinstance(node, ast.stmt):
                 # Ignore docstrings/constants
-                if isinstance(node, ast.Expr) and isinstance(node.value, (ast.Str, ast.Constant)):
+                if isinstance(node, ast.Expr) and isinstance(node.value, (ast.Constant)):
                     continue
                 if hasattr(node, 'lineno'):
                     executable_lines.add(node.lineno)
@@ -165,6 +166,8 @@ class MiniCoverage:
         self.project_root = os.path.abspath(project_root) if project_root else os.getcwd()
 
         # Data Collection (Raw Traces)
+        # Note: In CPython, set.add is atomic, making this reasonably thread-safe
+        # without explicit locks for the MVP.
         self.trace_data = {
             'lines': collections.defaultdict(set),  # {filename: {lines}}
             'arcs': collections.defaultdict(set)  # {filename: {(from, to)}}
@@ -178,8 +181,10 @@ class MiniCoverage:
         # Trace State
         self._cache_traceable = {}
         self.excluded_files = self._build_exclusion_set(excluded_files)
-        self.last_line = None
-        self.last_file = None
+
+        # Concurrency: Use Thread-Local Storage for arc tracking
+        # This ensures Thread A doesn't corrupt Thread B's "last line" history.
+        self.thread_local = threading.local()
 
     def _build_exclusion_set(self, user_excludes):
         excludes = set()
@@ -192,8 +197,6 @@ class MiniCoverage:
     def trace_function(self, frame, event, arg):
         """
         Collects raw execution data.
-        NOTE: We keep collection logic centralized here for performance.
-        Splitting this into multiple callbacks would slow down execution significantly.
         """
         if event != 'line':
             return self.trace_function
@@ -206,18 +209,29 @@ class MiniCoverage:
         if self._cache_traceable[filename]:
             lineno = frame.f_lineno
 
+            # Initialize thread-local state if this is a new thread
+            if not hasattr(self.thread_local, 'last_line'):
+                self.thread_local.last_line = None
+                self.thread_local.last_file = None
+
             # 1. Collect Line Data
             self.trace_data['lines'][filename].add(lineno)
 
-            # 2. Collect Arc Data
-            if self.last_file == filename and self.last_line is not None:
-                self.trace_data['arcs'][filename].add((self.last_line, lineno))
+            # 2. Collect Arc Data (Thread-Safe via Thread-Local Storage)
+            last_file = self.thread_local.last_file
+            last_line = self.thread_local.last_line
 
-            self.last_line = lineno
-            self.last_file = filename
+            if last_file == filename and last_line is not None:
+                self.trace_data['arcs'][filename].add((last_line, lineno))
+
+            # Update state for this specific thread
+            self.thread_local.last_line = lineno
+            self.thread_local.last_file = filename
         else:
-            self.last_line = None
-            self.last_file = None
+            # Clear tracking if we step out of project scope
+            if hasattr(self.thread_local, 'last_line'):
+                self.thread_local.last_line = None
+                self.thread_local.last_file = None
 
         return self.trace_function
 
@@ -249,7 +263,6 @@ class MiniCoverage:
                 possible = metric.get_possible_elements(ast_tree)
 
                 # 2. Fetch relevant dynamic data
-                # Mapping metric type to data source (Simple mapping for now)
                 if metric.get_name() == "Statement":
                     executed = self.trace_data['lines'][filename]
                 elif metric.get_name() == "Branch":
@@ -279,7 +292,11 @@ class MiniCoverage:
             with open(abs_script_path, 'rb') as f:
                 code = compile(f.read(), abs_script_path, 'exec')
 
+            # 1. Trace the current (Main) thread
             sys.settrace(self.trace_function)
+
+            # 2. Trace all FUTURE threads spawned by this script
+            threading.settrace(self.trace_function)
 
             exec_globals = {
                 '__name__': '__main__',
@@ -293,7 +310,10 @@ class MiniCoverage:
         except Exception as e:
             print(f"\n[!] Exception: {e}")
         finally:
+            # Cleanup both threading and sys hooks
             sys.settrace(None)
+            threading.settrace(None)
+
             sys.argv = original_argv
             sys.path = original_path
 
