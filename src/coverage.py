@@ -6,6 +6,10 @@ import threading
 import re
 import configparser
 import fnmatch
+import multiprocessing
+import pickle
+import glob
+import uuid
 
 
 # --- 1. Shared Utilities ---
@@ -142,10 +146,6 @@ class BranchCoverage(CoverageMetric):
     def _scan_body(self, statements, arcs, next_lineno, ignored_lines):
         for i, node in enumerate(statements):
             # If the node is on an ignored line, skip analyzing its branches
-            # However, we might still need to traverse children?
-            # Usually 'no cover' on a container (like if) implies ignoring the whole block logic.
-            # But specific line ignores inside a block are handled by StatementCoverage.
-            # Here we assume 'no cover' on a control flow statement ignores its branching requirements.
 
             current_next = next_lineno
             if i + 1 < len(statements):
@@ -262,6 +262,7 @@ class ConsoleReporter:
 class MiniCoverage:
     def __init__(self, project_root=None, config_file=None):
         self.project_root = os.path.abspath(project_root) if project_root else os.getcwd()
+        self.config_file = config_file
 
         # Load Configuration
         self.config_loader = ConfigLoader()
@@ -277,10 +278,79 @@ class MiniCoverage:
         self.reporter = ConsoleReporter()
 
         self._cache_traceable = {}
-        # We don't need manual excludes if we have config 'omit',
-        # but we still exclude the tool itself.
         self.excluded_files = {os.path.abspath(__file__)}
         self.thread_local = threading.local()
+
+        # Multiprocessing Data Identifier
+        self.pid = os.getpid()
+        self.uuid = uuid.uuid4().hex[:6]
+
+    def save_data(self):
+        """Saves current coverage data to a unique file."""
+        if not self.trace_data['lines'] and not self.trace_data['arcs']:
+            return
+
+        filename = f".coverage.{self.pid}.{self.uuid}"
+        try:
+            with open(filename, 'wb') as f:
+                pickle.dump(self.trace_data, f)
+        except Exception as e:
+            print(f"[!] Failed to save coverage data: {e}")
+
+    def combine_data(self):
+        """Merges all .coverage.* files into the main trace_data."""
+        pattern = ".coverage.*"
+        for filename in glob.glob(pattern):
+            try:
+                # Avoid reading garbage or directory
+                if not os.path.isfile(filename):
+                    continue
+
+                with open(filename, 'rb') as f:
+                    data = pickle.load(f)
+
+                    # Merge Lines
+                    for file, lines in data.get('lines', {}).items():
+                        self.trace_data['lines'][file].update(lines)
+
+                    # Merge Arcs
+                    for file, arcs in data.get('arcs', {}).items():
+                        self.trace_data['arcs'][file].update(arcs)
+
+                # Cleanup merged file
+                os.remove(filename)
+            except Exception:
+                # If file is corrupt or locked, just skip
+                pass
+
+    def _patch_multiprocessing(self):
+        """Monkey-patches multiprocessing.Process to enable coverage in child processes."""
+        if hasattr(multiprocessing, '_mini_coverage_patched'):
+            return
+
+        OriginalProcess = multiprocessing.Process
+
+        # Capture context for the child process
+        project_root = self.project_root
+        config_file = self.config_file
+
+        class CoverageProcess(OriginalProcess):
+            def run(self):
+                # Bootstrap coverage in the child process
+                cov = MiniCoverage(project_root=project_root, config_file=config_file)
+
+                sys.settrace(cov.trace_function)
+                threading.settrace(cov.trace_function)
+
+                try:
+                    super().run()
+                finally:
+                    sys.settrace(None)
+                    threading.settrace(None)
+                    cov.save_data()
+
+        multiprocessing.Process = CoverageProcess
+        multiprocessing._mini_coverage_patched = True
 
     def trace_function(self, frame, event, arg):
         if event != 'line':
@@ -373,6 +443,9 @@ class MiniCoverage:
             with open(abs_script_path, 'rb') as f:
                 code = compile(f.read(), abs_script_path, 'exec')
 
+            # Enable Multiprocessing Support
+            self._patch_multiprocessing()
+
             sys.settrace(self.trace_function)
             threading.settrace(self.trace_function)
 
@@ -395,6 +468,9 @@ class MiniCoverage:
             sys.path = original_path
 
     def report(self):
+        # Merge data from any child processes before analyzing
+        self.combine_data()
+
         results = self.analyze()
         self.reporter.print_report(results, self.project_root)
 
