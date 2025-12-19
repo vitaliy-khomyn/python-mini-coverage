@@ -10,7 +10,6 @@ import threading
 class SourceParser:
     """
     Responsible solely for File I/O and AST generation.
-    Adheres to SRP: Only changes if AST parsing logic changes.
     """
 
     def parse_file(self, filename):
@@ -25,28 +24,15 @@ class SourceParser:
 # --- 2. Coverage Strategies ---
 
 class CoverageMetric:
-    """
-    Interface for coverage criteria.
-    """
-
     def get_name(self):
         raise NotImplementedError
 
     def get_possible_elements(self, ast_tree):
-        """
-        Static Analysis: What *could* happen?
-        """
         raise NotImplementedError
 
     def calculate_stats(self, possible_elements, executed_data):
-        """
-        Dynamic Analysis: What *did* happen?
-        Returns: (percentage, missing_elements)
-        """
         if not possible_elements:
             return 0.0, set()
-
-        # Intersection logic is common for set-based coverage
         hit = possible_elements.intersection(executed_data)
         missing = possible_elements - hit
         pct = (len(hit) / len(possible_elements)) * 100
@@ -58,15 +44,14 @@ class StatementCoverage(CoverageMetric):
         return "Statement"
 
     def get_possible_elements(self, ast_tree):
-        """
-        Returns a set of line numbers that contain executable statements.
-        """
         executable_lines = set()
         for node in ast.walk(ast_tree):
             if isinstance(node, ast.stmt):
-                # Ignore docstrings/constants
-                if isinstance(node, ast.Expr) and isinstance(node.value, (ast.Constant)):
-                    continue
+                # FIXED: Use ast.Constant for Python 3.8+ (replaces ast.Str/ast.Num)
+                if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+                    # Check if it's a docstring (string constant)
+                    if isinstance(node.value.value, str):
+                        continue
                 if hasattr(node, 'lineno'):
                     executable_lines.add(node.lineno)
         return executable_lines
@@ -79,61 +64,120 @@ class BranchCoverage(CoverageMetric):
     def get_possible_elements(self, ast_tree):
         """
         Returns a set of arcs (start_line, end_line) representing possible jumps.
+        Now uses a recursive scanner to track 'next statement' for fallthroughs.
         """
         arcs = set()
-        for node in ast.walk(ast_tree):
-            # We currently only analyze IF statements for branching
-            if isinstance(node, ast.If):
-                self._analyze_if_branches(node, arcs)
+        # We start scanning the module body
+        if hasattr(ast_tree, 'body'):
+            self._scan_body(ast_tree.body, arcs)
         return arcs
 
-    def _analyze_if_branches(self, node, arcs):
-        start = node.lineno
+    def _scan_body(self, statements, arcs, next_lineno=None):
+        """
+        Iterates over a list of statements, passing the 'next' context down.
+        """
+        for i, node in enumerate(statements):
+            # Determine the fallthrough target for this node
+            current_next = next_lineno
+            if i + 1 < len(statements):
+                current_next = statements[i + 1].lineno
 
-        # 1. True Path
-        if node.body:
-            arcs.add((start, node.body[0].lineno))
+            self._analyze_node(node, arcs, current_next)
 
-        # 2. False Path
-        if node.orelse:
-            arcs.add((start, node.orelse[0].lineno))
+    def _analyze_node(self, node, arcs, next_lineno):
+        # Recursively scan children (Function defs, Classes, etc)
+        # We generally treat function bodies as isolated blocks (next_lineno=None)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
+            self._scan_body(node.body, arcs, None)
+            return
+
+        # 1. IF Statements
+        if isinstance(node, ast.If):
+            start = node.lineno
+
+            # True Path (Jump to Body)
+            if node.body:
+                arcs.add((start, node.body[0].lineno))
+                # Recurse into body
+                self._scan_body(node.body, arcs, next_lineno)
+
+            # False Path (Else or Fallthrough)
+            if node.orelse:
+                arcs.add((start, node.orelse[0].lineno))
+                # Recurse into else block
+                self._scan_body(node.orelse, arcs, next_lineno)
+            else:
+                # Implicit Else: Jump to next statement
+                if next_lineno:
+                    arcs.add((start, next_lineno))
+
+        # 2. Loops (For / AsyncFor / While)
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
+            start = node.lineno
+
+            # Enter Loop (True Path)
+            if node.body:
+                arcs.add((start, node.body[0].lineno))
+                self._scan_body(node.body, arcs, start)  # Loop loops back to start
+
+            # Exit Loop (False/Skip Path)
+            if node.orelse:
+                arcs.add((start, node.orelse[0].lineno))
+                self._scan_body(node.orelse, arcs, next_lineno)
+            elif next_lineno:
+                arcs.add((start, next_lineno))
+
+        # 3. Match Statements (Python 3.10+)
+        # We use getattr/hasattr to stay compatible with older Python versions
+        elif hasattr(ast, 'Match') and isinstance(node, ast.Match):
+            start = node.lineno
+
+            # Match checks against cases
+            has_wildcard = False
+            for case in node.cases:
+                # We assume the match statement jumps to the first line of a matching case body
+                if case.body:
+                    arcs.add((start, case.body[0].lineno))
+                    self._scan_body(case.body, arcs, next_lineno)
+
+                # Check for wildcard (default) case
+                if isinstance(case.pattern, getattr(ast, 'MatchAs', type(None))) and case.pattern.pattern is None:
+                    has_wildcard = True
+
+            # If no wildcard exists, match can fall through to next statement
+            if not has_wildcard and next_lineno:
+                arcs.add((start, next_lineno))
+
+        # 4. Standard structural recursion (Try, With, etc)
         else:
-            # Fallthrough (Implicit Else)
-            # This requires context about the next sibling, which is hard in standard ast.walk.
-            # For this MVP refactor, we acknowledge this limitation or would need a custom walker.
-            # To keep it runnable and simple, we skip complex fallthrough detection here
-            # or we could require a NodeVisitor to track siblings.
-            pass
+            # For other containers (Try, With), we just scan their bodies
+            if hasattr(node, 'body') and isinstance(node.body, list):
+                self._scan_body(node.body, arcs, next_lineno)
+            if hasattr(node, 'orelse') and isinstance(node.orelse, list):
+                self._scan_body(node.orelse, arcs, next_lineno)
+            if hasattr(node, 'finalbody') and isinstance(node.finalbody, list):
+                self._scan_body(node.finalbody, arcs, next_lineno)
 
 
 # --- 3. Reporting ---
 
 class ConsoleReporter:
     def print_report(self, results, project_root):
-        """
-        results: Dict { filename: { 'Statement': (pct, missing), 'Branch': (pct, missing) } }
-        """
         print("\n" + "=" * 90)
-        # Dynamic headers based on what keys are in the results
         headers = f"{'File':<25} | {'Stmt Cov':<9} | {'Branch Cov':<11} | {'Missing'}"
         print(headers)
         print("-" * 90)
 
         for filename in sorted(results.keys()):
             file_data = results[filename]
-
-            # Unpack specific known metrics for specific column formatting
             stmt_pct, stmt_miss = file_data.get('Statement', (0, set()))
             branch_stats = file_data.get('Branch')
-
             self._print_row(filename, stmt_pct, stmt_miss, branch_stats, project_root)
-
         print("=" * 90)
 
     def _print_row(self, filename, stmt_pct, stmt_miss, branch_stats, project_root):
         rel_name = os.path.relpath(filename, project_root)
 
-        # Format Missing Lines
         missing_list = sorted(list(stmt_miss))
         if not missing_list:
             miss_str = ""
@@ -142,14 +186,9 @@ class ConsoleReporter:
         else:
             miss_str = f"{len(missing_list)} lines"
 
-        # Format Branch Stats
         if branch_stats:
             branch_pct, _ = branch_stats
-            # Only show branch coverage if branches exist (possible > 0)
-            # We check this by seeing if the 'possible' set was empty in calculation
-            # Actually, simpler: if we calculated it, print it.
             if branch_stats[0] == 0 and not branch_stats[1]:
-                # If 0% and no missing, implies no branches existed (0/0)
                 branch_str = "N/A"
             else:
                 branch_str = f"{branch_pct:>3.0f}%"
@@ -165,25 +204,17 @@ class MiniCoverage:
     def __init__(self, project_root=None, excluded_files=None):
         self.project_root = os.path.abspath(project_root) if project_root else os.getcwd()
 
-        # Data Collection (Raw Traces)
-        # Note: In CPython, set.add is atomic, making this reasonably thread-safe
-        # without explicit locks for the MVP.
         self.trace_data = {
-            'lines': collections.defaultdict(set),  # {filename: {lines}}
-            'arcs': collections.defaultdict(set)  # {filename: {(from, to)}}
+            'lines': collections.defaultdict(set),
+            'arcs': collections.defaultdict(set)
         }
 
-        # Strategies
         self.parser = SourceParser()
         self.metrics = [StatementCoverage(), BranchCoverage()]
         self.reporter = ConsoleReporter()
 
-        # Trace State
         self._cache_traceable = {}
         self.excluded_files = self._build_exclusion_set(excluded_files)
-
-        # Concurrency: Use Thread-Local Storage for arc tracking
-        # This ensures Thread A doesn't corrupt Thread B's "last line" history.
         self.thread_local = threading.local()
 
     def _build_exclusion_set(self, user_excludes):
@@ -195,9 +226,6 @@ class MiniCoverage:
         return excludes
 
     def trace_function(self, frame, event, arg):
-        """
-        Collects raw execution data.
-        """
         if event != 'line':
             return self.trace_function
 
@@ -209,26 +237,21 @@ class MiniCoverage:
         if self._cache_traceable[filename]:
             lineno = frame.f_lineno
 
-            # Initialize thread-local state if this is a new thread
             if not hasattr(self.thread_local, 'last_line'):
                 self.thread_local.last_line = None
                 self.thread_local.last_file = None
 
-            # 1. Collect Line Data
             self.trace_data['lines'][filename].add(lineno)
 
-            # 2. Collect Arc Data (Thread-Safe via Thread-Local Storage)
             last_file = self.thread_local.last_file
             last_line = self.thread_local.last_line
 
             if last_file == filename and last_line is not None:
                 self.trace_data['arcs'][filename].add((last_line, lineno))
 
-            # Update state for this specific thread
             self.thread_local.last_line = lineno
             self.thread_local.last_file = filename
         else:
-            # Clear tracking if we step out of project scope
             if hasattr(self.thread_local, 'last_line'):
                 self.thread_local.last_line = None
                 self.thread_local.last_file = None
@@ -244,12 +267,7 @@ class MiniCoverage:
         return True
 
     def analyze(self):
-        """
-        Orchestrates the analysis by querying metrics.
-        """
         full_results = {}
-
-        # Analyze every file that was touched
         all_files = set(self.trace_data['lines'].keys()) | set(self.trace_data['arcs'].keys())
 
         for filename in all_files:
@@ -259,10 +277,8 @@ class MiniCoverage:
 
             file_results = {}
             for metric in self.metrics:
-                # 1. Static Analysis
                 possible = metric.get_possible_elements(ast_tree)
 
-                # 2. Fetch relevant dynamic data
                 if metric.get_name() == "Statement":
                     executed = self.trace_data['lines'][filename]
                 elif metric.get_name() == "Branch":
@@ -270,7 +286,6 @@ class MiniCoverage:
                 else:
                     executed = set()
 
-                # 3. Calculate
                 stats = metric.calculate_stats(possible, executed)
                 file_results[metric.get_name()] = stats
 
@@ -292,10 +307,7 @@ class MiniCoverage:
             with open(abs_script_path, 'rb') as f:
                 code = compile(f.read(), abs_script_path, 'exec')
 
-            # 1. Trace the current (Main) thread
             sys.settrace(self.trace_function)
-
-            # 2. Trace all FUTURE threads spawned by this script
             threading.settrace(self.trace_function)
 
             exec_globals = {
@@ -310,7 +322,6 @@ class MiniCoverage:
         except Exception as e:
             print(f"\n[!] Exception: {e}")
         finally:
-            # Cleanup both threading and sys hooks
             sys.settrace(None)
             threading.settrace(None)
 
