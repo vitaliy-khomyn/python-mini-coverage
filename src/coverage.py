@@ -3,22 +3,86 @@ import os
 import ast
 import collections
 import threading
+import re
+import configparser
+import fnmatch
 
 
 # --- 1. Shared Utilities ---
 
 class SourceParser:
     """
-    Responsible solely for File I/O and AST generation.
+    Responsible for File I/O, AST generation, and Pragma detection.
     """
 
-    def parse_file(self, filename):
+    def parse_source(self, filename):
+        """
+        Returns tuple: (ast_tree, ignored_lines_set)
+        """
+        ignored_lines = set()
         try:
-            with open(filename, 'r') as f:
-                source = f.read()
-            return ast.parse(source)
-        except (SyntaxError, OSError):
-            return None
+            with open(filename, 'r', encoding='utf-8') as f:
+                source_lines = f.readlines()
+
+            source_text = "".join(source_lines)
+            tree = ast.parse(source_text)
+
+            # Scan for pragmas
+            # Pattern: # ... pragma: no cover ...
+            pragma_pattern = re.compile(r'#.*pragma:\s*no\s*cover', re.IGNORECASE)
+
+            for i, line in enumerate(source_lines):
+                if pragma_pattern.search(line):
+                    ignored_lines.add(i + 1)  # Lineno is 1-based in AST
+
+            return tree, ignored_lines
+
+        except (SyntaxError, OSError, UnicodeDecodeError):
+            return None, set()
+
+
+class ConfigLoader:
+    """
+    Responsible for loading configuration from files (.coveragerc, setup.cfg).
+    """
+
+    def load_config(self, project_root, config_file=None):
+        config = {
+            'omit': set()
+        }
+
+        # Default search paths if no specific file provided
+        candidates = [config_file] if config_file else ['.coveragerc', 'setup.cfg', 'tox.ini']
+
+        parser = configparser.ConfigParser()
+
+        for cand in candidates:
+            if not cand: continue
+            path = os.path.join(project_root, cand)
+            if os.path.exists(path):
+                try:
+                    parser.read(path)
+                    # Check for [run] or [coverage:run] sections
+                    section = None
+                    if parser.has_section('run'):
+                        section = 'run'
+                    elif parser.has_section('coverage:run'):
+                        section = 'coverage:run'
+
+                    if section and parser.has_option(section, 'omit'):
+                        omit_str = parser.get(section, 'omit')
+                        # Handle multiline or comma-separated lists
+                        for line in omit_str.replace(',', '\n').splitlines():
+                            clean = line.strip()
+                            if clean:
+                                config['omit'].add(clean)
+
+                    # Stop after finding the first valid config file
+                    break
+                except configparser.Error:
+                    pass
+
+        return config
 
 
 # --- 2. Coverage Strategies ---
@@ -27,7 +91,7 @@ class CoverageMetric:
     def get_name(self):
         raise NotImplementedError
 
-    def get_possible_elements(self, ast_tree):
+    def get_possible_elements(self, ast_tree, ignored_lines):
         raise NotImplementedError
 
     def calculate_stats(self, possible_elements, executed_data):
@@ -43,11 +107,15 @@ class StatementCoverage(CoverageMetric):
     def get_name(self):
         return "Statement"
 
-    def get_possible_elements(self, ast_tree):
+    def get_possible_elements(self, ast_tree, ignored_lines):
         executable_lines = set()
         for node in ast.walk(ast_tree):
             if isinstance(node, ast.stmt):
-                # FIXED: Use ast.Constant for Python 3.8+ (replaces ast.Str/ast.Num)
+                # Check for Pragma exclusion
+                if node.lineno in ignored_lines:
+                    continue
+
+                # Use ast.Constant for Python 3.8+ (replaces ast.Str/ast.Num)
                 if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
                     # Check if it's a docstring (string constant)
                     if isinstance(node.value.value, str):
@@ -61,102 +129,93 @@ class BranchCoverage(CoverageMetric):
     def get_name(self):
         return "Branch"
 
-    def get_possible_elements(self, ast_tree):
+    def get_possible_elements(self, ast_tree, ignored_lines):
         """
         Returns a set of arcs (start_line, end_line) representing possible jumps.
-        Now uses a recursive scanner to track 'next statement' for fallthroughs.
+        Excludes arcs starting on ignored lines.
         """
         arcs = set()
-        # We start scanning the module body
         if hasattr(ast_tree, 'body'):
-            self._scan_body(ast_tree.body, arcs)
+            self._scan_body(ast_tree.body, arcs, None, ignored_lines)
         return arcs
 
-    def _scan_body(self, statements, arcs, next_lineno=None):
-        """
-        Iterates over a list of statements, passing the 'next' context down.
-        """
+    def _scan_body(self, statements, arcs, next_lineno, ignored_lines):
         for i, node in enumerate(statements):
-            # Determine the fallthrough target for this node
+            # If the node is on an ignored line, skip analyzing its branches
+            # However, we might still need to traverse children?
+            # Usually 'no cover' on a container (like if) implies ignoring the whole block logic.
+            # But specific line ignores inside a block are handled by StatementCoverage.
+            # Here we assume 'no cover' on a control flow statement ignores its branching requirements.
+
             current_next = next_lineno
             if i + 1 < len(statements):
                 current_next = statements[i + 1].lineno
 
-            self._analyze_node(node, arcs, current_next)
+            if hasattr(node, 'lineno') and node.lineno in ignored_lines:
+                continue
 
-    def _analyze_node(self, node, arcs, next_lineno):
-        # Recursively scan children (Function defs, Classes, etc)
-        # We generally treat function bodies as isolated blocks (next_lineno=None)
+            self._analyze_node(node, arcs, current_next, ignored_lines)
+
+    def _analyze_node(self, node, arcs, next_lineno, ignored_lines):
+        # Recursively scan children
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
-            self._scan_body(node.body, arcs, None)
+            self._scan_body(node.body, arcs, None, ignored_lines)
             return
 
         # 1. IF Statements
         if isinstance(node, ast.If):
             start = node.lineno
 
-            # True Path (Jump to Body)
+            # True Path
             if node.body:
                 arcs.add((start, node.body[0].lineno))
-                # Recurse into body
-                self._scan_body(node.body, arcs, next_lineno)
+                self._scan_body(node.body, arcs, next_lineno, ignored_lines)
 
-            # False Path (Else or Fallthrough)
+            # False Path
             if node.orelse:
                 arcs.add((start, node.orelse[0].lineno))
-                # Recurse into else block
-                self._scan_body(node.orelse, arcs, next_lineno)
+                self._scan_body(node.orelse, arcs, next_lineno, ignored_lines)
             else:
-                # Implicit Else: Jump to next statement
                 if next_lineno:
                     arcs.add((start, next_lineno))
 
-        # 2. Loops (For / AsyncFor / While)
+        # 2. Loops
         elif isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
             start = node.lineno
 
-            # Enter Loop (True Path)
             if node.body:
                 arcs.add((start, node.body[0].lineno))
-                self._scan_body(node.body, arcs, start)  # Loop loops back to start
+                self._scan_body(node.body, arcs, start, ignored_lines)
 
-            # Exit Loop (False/Skip Path)
             if node.orelse:
                 arcs.add((start, node.orelse[0].lineno))
-                self._scan_body(node.orelse, arcs, next_lineno)
+                self._scan_body(node.orelse, arcs, next_lineno, ignored_lines)
             elif next_lineno:
                 arcs.add((start, next_lineno))
 
-        # 3. Match Statements (Python 3.10+)
-        # We use getattr/hasattr to stay compatible with older Python versions
+        # 3. Match Statements
         elif hasattr(ast, 'Match') and isinstance(node, ast.Match):
             start = node.lineno
-
-            # Match checks against cases
             has_wildcard = False
             for case in node.cases:
-                # We assume the match statement jumps to the first line of a matching case body
                 if case.body:
                     arcs.add((start, case.body[0].lineno))
-                    self._scan_body(case.body, arcs, next_lineno)
+                    self._scan_body(case.body, arcs, next_lineno, ignored_lines)
 
-                # Check for wildcard (default) case
                 if isinstance(case.pattern, getattr(ast, 'MatchAs', type(None))) and case.pattern.pattern is None:
                     has_wildcard = True
 
-            # If no wildcard exists, match can fall through to next statement
             if not has_wildcard and next_lineno:
                 arcs.add((start, next_lineno))
 
-        # 4. Standard structural recursion (Try, With, etc)
+        # 4. Standard structural recursion
         else:
-            # For other containers (Try, With), we just scan their bodies
             if hasattr(node, 'body') and isinstance(node.body, list):
-                self._scan_body(node.body, arcs, next_lineno)
+                self._scan_body(node.body, arcs, next_lineno, ignored_lines)
             if hasattr(node, 'orelse') and isinstance(node.orelse, list):
-                self._scan_body(node.orelse, arcs, next_lineno)
+                self._scan_body(node.orelse, arcs, next_lineno, ignored_lines)
             if hasattr(node, 'finalbody') and isinstance(node.finalbody, list):
-                self._scan_body(node.finalbody, arcs, next_lineno)
+                self._scan_body(node.finalbody, arcs, next_lineno, ignored_lines)
 
 
 # --- 3. Reporting ---
@@ -201,8 +260,12 @@ class ConsoleReporter:
 # --- 4. Main Coordinator ---
 
 class MiniCoverage:
-    def __init__(self, project_root=None, excluded_files=None):
+    def __init__(self, project_root=None, config_file=None):
         self.project_root = os.path.abspath(project_root) if project_root else os.getcwd()
+
+        # Load Configuration
+        self.config_loader = ConfigLoader()
+        self.config = self.config_loader.load_config(self.project_root, config_file)
 
         self.trace_data = {
             'lines': collections.defaultdict(set),
@@ -214,16 +277,10 @@ class MiniCoverage:
         self.reporter = ConsoleReporter()
 
         self._cache_traceable = {}
-        self.excluded_files = self._build_exclusion_set(excluded_files)
+        # We don't need manual excludes if we have config 'omit',
+        # but we still exclude the tool itself.
+        self.excluded_files = {os.path.abspath(__file__)}
         self.thread_local = threading.local()
-
-    def _build_exclusion_set(self, user_excludes):
-        excludes = set()
-        if user_excludes:
-            for f in user_excludes:
-                excludes.add(os.path.abspath(f))
-        excludes.add(os.path.abspath(__file__))
-        return excludes
 
     def trace_function(self, frame, event, arg):
         if event != 'line':
@@ -264,6 +321,13 @@ class MiniCoverage:
             return False
         if abs_path in self.excluded_files:
             return False
+
+        # Check against configured 'omit' patterns
+        rel_path = os.path.relpath(abs_path, self.project_root)
+        for pattern in self.config['omit']:
+            if fnmatch.fnmatch(rel_path, pattern):
+                return False
+
         return True
 
     def analyze(self):
@@ -271,13 +335,15 @@ class MiniCoverage:
         all_files = set(self.trace_data['lines'].keys()) | set(self.trace_data['arcs'].keys())
 
         for filename in all_files:
-            ast_tree = self.parser.parse_file(filename)
+            # Parse source AND ignored lines (pragmas)
+            ast_tree, ignored_lines = self.parser.parse_source(filename)
             if not ast_tree:
                 continue
 
             file_results = {}
             for metric in self.metrics:
-                possible = metric.get_possible_elements(ast_tree)
+                # Pass ignored lines to analysis
+                possible = metric.get_possible_elements(ast_tree, ignored_lines)
 
                 if metric.get_name() == "Statement":
                     executed = self.trace_data['lines'][filename]
