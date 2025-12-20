@@ -1,3 +1,5 @@
+import unittest
+import os
 from src.config_loader import ConfigLoader
 from tests.test_utils import BaseTestCase
 
@@ -11,6 +13,7 @@ class TestConfigLoader(BaseTestCase):
     def test_defaults_no_file(self):
         config = self.loader.load_config(self.test_dir)
         self.assertEqual(config['omit'], set())
+        self.assertEqual(config['data_file'], ".coverage.db")
 
     def test_load_coveragerc_simple(self):
         content = """
@@ -44,6 +47,15 @@ omit =
         config = self.loader.load_config(self.test_dir)
         self.assertIn("generated.py", config['omit'])
 
+    def test_data_file_option(self):
+        content = """
+[run]
+data_file = my_coverage.sqlite
+"""
+        self.create_file(".coveragerc", content)
+        config = self.loader.load_config(self.test_dir)
+        self.assertEqual(config['data_file'], "my_coverage.sqlite")
+
     def test_precedence_explicit_file(self):
         # Create both default files
         self.create_file(".coveragerc", "[run]\nomit=A")
@@ -69,6 +81,7 @@ omit =
         config = self.loader.load_config(self.test_dir)
         # Should fail gracefully and return defaults
         self.assertEqual(config['omit'], set())
+        self.assertEqual(config['data_file'], ".coverage.db")
 
     def test_empty_omit(self):
         self.create_file(".coveragerc", "[run]\nomit=")

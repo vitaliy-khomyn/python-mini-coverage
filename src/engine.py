@@ -3,7 +3,7 @@ import os
 import collections
 import threading
 import multiprocessing
-import pickle
+import sqlite3
 import glob
 import uuid
 import fnmatch
@@ -24,6 +24,7 @@ class MiniCoverage:
         self.config_loader = ConfigLoader()
         self.config = self.config_loader.load_config(self.project_root, config_file)
 
+        # In-memory storage for current process
         self.trace_data = {
             'lines': collections.defaultdict(set),
             'arcs': collections.defaultdict(set)
@@ -43,43 +44,131 @@ class MiniCoverage:
         self.pid = os.getpid()
         self.uuid = uuid.uuid4().hex[:6]
 
+    def _init_db(self, db_path):
+        """Initializes the SQLite database schema."""
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute("""
+                    CREATE TABLE IF NOT EXISTS lines
+                    (
+                        file_path
+                        TEXT,
+                        line_no
+                        INTEGER,
+                        PRIMARY
+                        KEY
+                    (
+                        file_path,
+                        line_no
+                    )
+                        )
+                    """)
+        cur.execute("""
+                    CREATE TABLE IF NOT EXISTS arcs
+                    (
+                        file_path
+                        TEXT,
+                        start_line
+                        INTEGER,
+                        end_line
+                        INTEGER,
+                        PRIMARY
+                        KEY
+                    (
+                        file_path,
+                        start_line,
+                        end_line
+                    )
+                        )
+                    """)
+        conn.commit()
+        return conn
+
     def save_data(self):
-        """Saves current coverage data to a unique file."""
+        """Saves current coverage data to a unique SQLite file."""
         if not self.trace_data['lines'] and not self.trace_data['arcs']:
             return
 
-        filename = f".coverage.{self.pid}.{self.uuid}"
+        # Use a unique filename for this process to avoid locking contention during high concurrency
+        base_name = self.config['data_file']
+        filename = f"{base_name}.{self.pid}.{self.uuid}"
+
         try:
-            with open(filename, 'wb') as f:
-                pickle.dump(self.trace_data, f)
+            conn = self._init_db(filename)
+            cur = conn.cursor()
+
+            # Batch Insert Lines
+            line_data = []
+            for file, lines in self.trace_data['lines'].items():
+                for line in lines:
+                    line_data.append((file, line))
+
+            cur.executemany("INSERT OR IGNORE INTO lines (file_path, line_no) VALUES (?, ?)", line_data)
+
+            # Batch Insert Arcs
+            arc_data = []
+            for file, arcs in self.trace_data['arcs'].items():
+                for start, end in arcs:
+                    arc_data.append((file, start, end))
+
+            cur.executemany("INSERT OR IGNORE INTO arcs (file_path, start_line, end_line) VALUES (?, ?, ?)", arc_data)
+
+            conn.commit()
+            conn.close()
         except Exception as e:
-            print(f"[!] Failed to save coverage data: {e}")
+            print(f"[!] Failed to save coverage data to DB: {e}")
 
     def combine_data(self):
-        """Merges all .coverage.* files into the main trace_data."""
-        pattern = ".coverage.*"
+        """Merges all partial DB files into the main database."""
+        main_db = self.config['data_file']
+        conn = self._init_db(main_db)
+        cur = conn.cursor()
+
+        # Find partial files: name.*.*
+        # Note: glob pattern should match what save_data produces
+        pattern = f"{main_db}.*.*"
+
         for filename in glob.glob(pattern):
             try:
-                # Avoid reading garbage or directory
-                if not os.path.isfile(filename):
-                    continue
+                # Attach the partial DB
+                # Note: 'attach' requires a simple alias name
+                alias = f"partial_{uuid.uuid4().hex}"
+                cur.execute(f"ATTACH DATABASE ? AS {alias}", (filename,))
 
-                with open(filename, 'rb') as f:
-                    data = pickle.load(f)
+                # Merge Lines
+                cur.execute(f"INSERT OR IGNORE INTO lines SELECT * FROM {alias}.lines")
 
-                    # Merge Lines
-                    for file, lines in data.get('lines', {}).items():
-                        self.trace_data['lines'][file].update(lines)
+                # Merge Arcs
+                cur.execute(f"INSERT OR IGNORE INTO arcs SELECT * FROM {alias}.arcs")
 
-                    # Merge Arcs
-                    for file, arcs in data.get('arcs', {}).items():
-                        self.trace_data['arcs'][file].update(arcs)
+                conn.commit()
+                cur.execute(f"DETACH DATABASE {alias}")
 
                 # Cleanup merged file
                 os.remove(filename)
-            except Exception:
-                # If file is corrupt or locked, just skip
+            except sqlite3.OperationalError:
+                # Lock issues or corrupt file
                 pass
+            except Exception as e:
+                print(f"[!] Error combining {filename}: {e}")
+
+        # Load combined data back into memory for reporting
+        self._load_from_db(conn)
+        conn.close()
+
+    def _load_from_db(self, conn):
+        """Populates self.trace_data from the given database connection."""
+        cur = conn.cursor()
+
+        # Load Lines
+        cur.execute("SELECT file_path, line_no FROM lines")
+        for file, line in cur.fetchall():
+            self.trace_data['lines'][file].add(line)
+
+        # Load Arcs
+        cur.execute("SELECT file_path, start_line, end_line FROM arcs")
+        for file, start, end in cur.fetchall():
+            self.trace_data['arcs'][file].add((start, end))
 
     def _patch_multiprocessing(self):
         """Monkey-patches multiprocessing.Process to enable coverage in child processes."""
@@ -150,7 +239,6 @@ class MiniCoverage:
         if abs_path in self.excluded_files:
             return False
 
-        # Check against configured 'omit' patterns
         rel_path = os.path.relpath(abs_path, self.project_root)
         for pattern in self.config['omit']:
             if fnmatch.fnmatch(rel_path, pattern):
@@ -163,14 +251,12 @@ class MiniCoverage:
         all_files = set(self.trace_data['lines'].keys()) | set(self.trace_data['arcs'].keys())
 
         for filename in all_files:
-            # Parse source AND ignored lines (pragmas)
             ast_tree, ignored_lines = self.parser.parse_source(filename)
             if not ast_tree:
                 continue
 
             file_results = {}
             for metric in self.metrics:
-                # Pass ignored lines to analysis
                 possible = metric.get_possible_elements(ast_tree, ignored_lines)
 
                 if metric.get_name() == "Statement":
@@ -201,7 +287,6 @@ class MiniCoverage:
             with open(abs_script_path, 'rb') as f:
                 code = compile(f.read(), abs_script_path, 'exec')
 
-            # Enable Multiprocessing Support
             self._patch_multiprocessing()
 
             sys.settrace(self.trace_function)
@@ -222,11 +307,14 @@ class MiniCoverage:
             sys.settrace(None)
             threading.settrace(None)
 
+            # Save data before combining
+            self.save_data()
+
             sys.argv = original_argv
             sys.path = original_path
 
     def report(self):
-        # Merge data from any child processes before analyzing
+        # Merge data from any partial DB files
         self.combine_data()
 
         results = self.analyze()
