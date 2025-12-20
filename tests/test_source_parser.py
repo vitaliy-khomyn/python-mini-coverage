@@ -36,7 +36,7 @@ class TestSourceParser(BaseTestCase):
 
     def test_pragma_detection_simple(self):
         # Use dedent to fix indentation issues
-        code = textwrap.dedent("""
+        code = textwrap.dedent("""\
         x = 1
         if x > 0:
             print("ignored") # pragma: no cover
@@ -44,11 +44,14 @@ class TestSourceParser(BaseTestCase):
         path = self.create_file("pragma.py", code)
         tree, ignored = self.parser.parse_source(path)
 
-        # Line 3: print("ignored")...
+        # Line 1: x = 1
+        # Line 2: if x > 0:
+        # Line 3: print("ignored") # pragma: no cover
         self.assertIn(3, ignored)
         self.assertEqual(len(ignored), 1)
 
     def test_pragma_detection_case_insensitive(self):
+        # Here we allow the leading newline, so lines are 2, 3, 4
         code = textwrap.dedent("""
         x = 1 # PRAGMA: NO COVER
         y = 2 # pragma: no cover
