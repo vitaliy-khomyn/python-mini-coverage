@@ -4,18 +4,26 @@ import configparser
 
 class ConfigLoader:
     """
-    Responsible for loading configuration from files (.coveragerc, setup.cfg).
+    Loads configuration settings from standard config files.
     """
 
     def load_config(self, project_root, config_file=None):
+        """
+        Load configuration from .coveragerc, setup.cfg, or a specified file.
+
+        Args:
+            project_root (str): The root directory to search for config files.
+            config_file (str): Optional explicit path to a config file.
+
+        Returns:
+            dict: Configuration dictionary with keys like 'omit' (set) and 'data_file' (str).
+        """
         config = {
             'omit': set(),
             'data_file': '.coverage.db'
         }
 
-        # Default search paths if no specific file provided
         candidates = [config_file] if config_file else ['.coveragerc', 'setup.cfg', 'tox.ini']
-
         parser = configparser.ConfigParser()
 
         for cand in candidates:
@@ -24,7 +32,6 @@ class ConfigLoader:
             if os.path.exists(path):
                 try:
                     parser.read(path)
-                    # Check for [run] or [coverage:run] sections
                     section = None
                     if parser.has_section('run'):
                         section = 'run'
@@ -34,7 +41,6 @@ class ConfigLoader:
                     if section:
                         if parser.has_option(section, 'omit'):
                             omit_str = parser.get(section, 'omit')
-                            # Handle multiline or comma-separated lists
                             for line in omit_str.replace(',', '\n').splitlines():
                                 clean = line.strip()
                                 if clean:
@@ -43,7 +49,6 @@ class ConfigLoader:
                         if parser.has_option(section, 'data_file'):
                             config['data_file'] = parser.get(section, 'data_file').strip()
 
-                    # Stop after finding the first valid config file
                     break
                 except configparser.Error:
                     pass

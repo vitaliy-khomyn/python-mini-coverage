@@ -4,7 +4,18 @@ import collections
 
 
 class ConsoleReporter:
+    """
+    Outputs coverage statistics to the standard output.
+    """
+
     def print_report(self, results, project_root):
+        """
+        Format and print the coverage table.
+
+        Args:
+            results (dict): The analysis results.
+            project_root (str): The base path for relative filename display.
+        """
         print("\n" + "=" * 100)
         headers = f"{'File':<25} | {'Stmt Cov':<9} | {'Branch Cov':<11} | {'Missing'}"
         print(headers)
@@ -18,13 +29,14 @@ class ConsoleReporter:
         print("=" * 100)
 
     def _print_row(self, filename, stmt_data, branch_data, project_root):
+        """
+        Print a single row of the report table.
+        """
         rel_name = os.path.relpath(filename, project_root)
 
-        # Statement Stats
         stmt_pct = stmt_data['pct']
         stmt_miss = sorted(list(stmt_data['missing']))
 
-        # Branch Stats
         branch_pct = 0
         branch_miss = []
         has_branches = False
@@ -36,17 +48,14 @@ class ConsoleReporter:
                 branch_pct = branch_data['pct']
                 branch_miss = sorted(list(branch_data['missing']))
 
-        # Format Missing Column
         missing_items = []
 
-        # 1. Missing Lines
         if stmt_miss:
             if len(stmt_miss) > 5:
                 missing_items.append(f"L{stmt_miss[0]}..L{stmt_miss[-1]}")
             else:
                 missing_items.append(f"Lines: {','.join(map(str, stmt_miss))}")
 
-        # 2. Missing Branches
         if branch_miss:
             arcs_str = [f"{start}->{end}" for start, end in branch_miss]
             if len(arcs_str) > 3:
@@ -58,7 +67,6 @@ class ConsoleReporter:
         if not miss_str:
             miss_str = ""
 
-        # Format Branch Column
         if not has_branches:
             branch_str = "N/A"
         else:
@@ -69,13 +77,20 @@ class ConsoleReporter:
 
 class HtmlReporter:
     """
-    Generates a static HTML site with code highlighting.
+    Generates a static HTML website visualizing coverage.
     """
 
     def __init__(self, output_dir="htmlcov"):
         self.output_dir = output_dir
 
     def generate(self, results, project_root):
+        """
+        Create the HTML report directory and files.
+
+        Args:
+            results (dict): Coverage analysis results.
+            project_root (str): The project root directory.
+        """
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
@@ -87,7 +102,9 @@ class HtmlReporter:
             self._generate_file_report(filename, data, project_root)
 
     def _generate_index(self, results, project_root):
-        # Calculate Aggregates
+        """
+        Generate the index.html dashboard.
+        """
         total_stmts = 0
         total_miss = 0
 
@@ -155,10 +172,12 @@ class HtmlReporter:
             f.write(html_content)
 
     def _generate_file_report(self, filename, data, project_root):
+        """
+        Generate a detailed HTML page for a single source file.
+        """
         rel_name = os.path.relpath(filename, project_root)
         out_name = f"{self._sanitize_filename(rel_name)}.html"
 
-        # Prepare Data
         stmt_data = data.get('Statement')
         executed_lines = stmt_data['executed']
         missing_lines = stmt_data['missing']
@@ -186,10 +205,9 @@ class HtmlReporter:
             elif lineno in missing_lines:
                 css_class = "miss"
 
-            # Branch Annotations
             if lineno in missing_branches:
                 targets = missing_branches[lineno]
-                # If hit but missing branches, mark as partial
+                # mark partial if line was hit but branch missed
                 if css_class == "hit":
                     css_class = "partial"
 
@@ -231,4 +249,7 @@ class HtmlReporter:
             f.write(html_content)
 
     def _sanitize_filename(self, path):
+        """
+        Convert a file path to a safe filename for the HTML report.
+        """
         return path.replace(os.sep, "_").replace(".", "_")

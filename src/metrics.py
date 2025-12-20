@@ -3,13 +3,40 @@ import dis
 
 
 class CoverageMetric:
+    """
+    Abstract base class for coverage measurement strategies.
+    """
+
     def get_name(self):
+        """
+        Return the display name of the metric.
+        """
         raise NotImplementedError
 
     def get_possible_elements(self, ast_tree, ignored_lines):
+        """
+        Analyze the AST (or Code Object) to determine all possible coverage targets.
+
+        Args:
+            ast_tree (ast.Module): The parsed source tree.
+            ignored_lines (set): Set of line numbers marked with pragmas to ignore.
+
+        Returns:
+            set: A collection of elements (lines, arcs, or conditions) that should be covered.
+        """
         raise NotImplementedError
 
     def calculate_stats(self, possible_elements, executed_data):
+        """
+        Compare possible elements against executed data to calculate coverage.
+
+        Args:
+            possible_elements (set): The set of static elements found by analysis.
+            executed_data (set): The set of dynamic elements collected during execution.
+
+        Returns:
+            dict: Statistics including 'pct' (float), 'missing' (set), 'executed' (set).
+        """
         if not possible_elements:
             return {
                 'pct': 100.0,
@@ -30,8 +57,11 @@ class CoverageMetric:
         }
 
 
-# ... existing StatementCoverage code ...
 class StatementCoverage(CoverageMetric):
+    """
+    Measures which executable lines of code were run.
+    """
+
     def get_name(self):
         return "Statement"
 
@@ -41,8 +71,12 @@ class StatementCoverage(CoverageMetric):
             if isinstance(node, ast.stmt):
                 if node.lineno in ignored_lines:
                     continue
+
+                # ignore constants (docstrings, standalone numbers)
                 if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
                     continue
+
+                # compatibility for < python 3.8
                 if isinstance(node, ast.Expr) and isinstance(node.value, (getattr(ast, 'Str', type(None)),
                                                                           getattr(ast, 'Num', type(None)))):
                     continue
@@ -53,6 +87,10 @@ class StatementCoverage(CoverageMetric):
 
 
 class BranchCoverage(CoverageMetric):
+    """
+    Measures control flow branches (arcs) between lines.
+    """
+
     def get_name(self):
         return "Branch"
 
@@ -63,6 +101,9 @@ class BranchCoverage(CoverageMetric):
         return arcs
 
     def _scan_body(self, statements, arcs, next_lineno, ignored_lines):
+        """
+        Recursively scan a block of statements to identify jump targets.
+        """
         for i, node in enumerate(statements):
             current_next = next_lineno
             if i + 1 < len(statements):
@@ -74,6 +115,9 @@ class BranchCoverage(CoverageMetric):
             self._analyze_node(node, arcs, current_next, ignored_lines)
 
     def _analyze_node(self, node, arcs, next_lineno, ignored_lines):
+        """
+        Analyze a single AST node to find control flow structures.
+        """
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
             self._scan_body(node.body, arcs, None, ignored_lines)
             return
@@ -124,7 +168,7 @@ class BranchCoverage(CoverageMetric):
 
 class ConditionCoverage(CoverageMetric):
     """
-    Identifies atomic Boolean Conditions (MCDC foundation).
+    Identifies atomic Boolean Conditions for MCDC analysis.
     """
 
     def get_name(self):
@@ -151,27 +195,17 @@ class ConditionCoverage(CoverageMetric):
 
 class BytecodeControlFlow(CoverageMetric):
     """
-    Analyzes Python bytecode to determine control flow (jumps).
-    This allows for more accurate branch coverage, handling implicit
-    returns, short-circuiting, and generator states better than AST.
+    Analyzes Python bytecode to determine control flow jumps.
     """
 
     def get_name(self):
         return "Bytecode"
 
     def get_possible_elements(self, code_obj, ignored_lines=None):
-        """
-        Returns a set of (instruction_offset, target_offset) tuples representing jumps.
-        Input is now a Code Object, not AST.
-        """
-        # Note: This requires the engine to pass the code object,
-        # or we compile it here if needed.
         if not code_obj:
             return set()
 
         jumps = set()
-        # dis.get_instructions yields Instruction objects
-        # We need to handle nested code objects (functions/classes)
         self._analyze_code_object(code_obj, jumps)
         return jumps
 
@@ -179,22 +213,16 @@ class BytecodeControlFlow(CoverageMetric):
         instructions = list(dis.get_instructions(co))
 
         for i, instr in enumerate(instructions):
-            # Check for jump instructions
-            # Opcodes like POP_JUMP_IF_FALSE (114), POP_JUMP_IF_TRUE (115),
-            # JUMP_FORWARD (110), JUMP_ABSOLUTE (113), etc.
             if instr.opcode in dis.hasjabs or instr.opcode in dis.hasjrel:
-                # Target is the jump destination
                 target = instr.argval
                 jumps.add((instr.offset, target))
 
-                # Fallthrough: Most conditional jumps can also fall through to next instr
-                # Unconditional jumps (JUMP_ABSOLUTE) do not fall through.
+                # fallthrough logic for conditional jumps
                 if "JUMP_IF" in instr.opname or "FOR_ITER" in instr.opname:
                     if i + 1 < len(instructions):
                         next_instr = instructions[i + 1]
                         jumps.add((instr.offset, next_instr.offset))
 
-        # Recurse into consts to find nested functions/classes
         for const in co.co_consts:
             if isinstance(const, type(co)):
                 self._analyze_code_object(const, jumps)

@@ -8,7 +8,6 @@ import glob
 import uuid
 import fnmatch
 
-# Relative imports assuming running as a package
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
 from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage, BytecodeControlFlow
@@ -17,24 +16,28 @@ from .reporters import ConsoleReporter, HtmlReporter
 
 class MiniCoverage:
     def __init__(self, project_root=None, config_file=None):
+        """
+        Initialize the coverage engine.
+
+        Args:
+            project_root (str): The root directory to restrict tracing to.
+            config_file (str): Optional path to a configuration file.
+        """
         self.project_root = os.path.abspath(project_root) if project_root else os.getcwd()
         self.config_file = config_file
 
-        # Load Configuration
         self.config_loader = ConfigLoader()
         self.config = self.config_loader.load_config(self.project_root, config_file)
 
-        # In-memory storage for current process
-        # Structure: {filename: {context_id: {lines}}}
+        # structure: {filename: {context_id: {lines}}}
         self.trace_data = {
             'lines': collections.defaultdict(lambda: collections.defaultdict(set)),
             'arcs': collections.defaultdict(lambda: collections.defaultdict(set))
         }
 
-        # Context Management
         self.current_context = "default"
-        self.context_cache = {"default": 0}  # map label -> id
-        self.reverse_context_cache = {0: "default"}  # map id -> label
+        self.context_cache = {"default": 0}
+        self.reverse_context_cache = {0: "default"}
         self._next_context_id = 1
         self._context_lock = threading.Lock()
 
@@ -47,13 +50,15 @@ class MiniCoverage:
         self.excluded_files = {os.path.abspath(__file__)}
         self.thread_local = threading.local()
 
-        # Multiprocessing Data Identifier
         self.pid = os.getpid()
         self.uuid = uuid.uuid4().hex[:6]
 
     def switch_context(self, context_label):
         """
-        Switches the current recording context (e.g., 'test_login', 'test_api').
+        Switch the current recording context.
+
+        If the context label is new, assigns a new ID.
+        Thread-safe regarding context ID assignment.
         """
         if context_label == self.current_context:
             return
@@ -68,11 +73,18 @@ class MiniCoverage:
             self.current_context = context_label
 
     def _get_current_context_id(self):
-        # Optimization: fast lookup without lock if possible (GIL makes dict read atomic-ish)
+        """
+        Retrieve the integer ID for the active context.
+        """
+        # optimization: fast lookup without lock if possible (GIL makes dict read atomic-ish)
         return self.context_cache.get(self.current_context, 0)
 
     def _init_db(self, db_path):
-        """Initializes the SQLite database schema with Context support."""
+        """
+        Initialize the SQLite database schema.
+
+        Creates 'contexts', 'lines', and 'arcs' tables if they do not exist.
+        """
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
 
@@ -89,7 +101,7 @@ class MiniCoverage:
                     )
                     """)
 
-        # Insert default context if not exists
+        # insert default context if not exists
         cur.execute("INSERT OR IGNORE INTO contexts (id, label) VALUES (0, 'default')")
 
         cur.execute("""
@@ -149,8 +161,12 @@ class MiniCoverage:
         return conn
 
     def save_data(self):
-        """Saves current coverage data to a unique SQLite file."""
-        # Check if we have any data
+        """
+        Dump the in-memory coverage data to a unique SQLite file.
+
+        This prevents locking contention by writing to a unique filename
+        based on PID and UUID.
+        """
         has_data = any(self.trace_data['lines'].values()) or any(self.trace_data['arcs'].values())
         if not has_data:
             return
@@ -162,11 +178,11 @@ class MiniCoverage:
             conn = self._init_db(filename)
             cur = conn.cursor()
 
-            # 1. Sync Contexts
+            # sync contexts
             ctx_data = [(cid, label) for label, cid in self.context_cache.items()]
             cur.executemany("INSERT OR IGNORE INTO contexts (id, label) VALUES (?, ?)", ctx_data)
 
-            # 2. Batch Insert Lines
+            # batch insert lines
             line_data = []
             for file, ctx_map in self.trace_data['lines'].items():
                 for cid, lines in ctx_map.items():
@@ -175,7 +191,7 @@ class MiniCoverage:
 
             cur.executemany("INSERT OR IGNORE INTO lines (file_path, context_id, line_no) VALUES (?, ?, ?)", line_data)
 
-            # 3. Batch Insert Arcs
+            # batch insert arcs
             arc_data = []
             for file, ctx_map in self.trace_data['arcs'].items():
                 for cid, arcs in ctx_map.items():
@@ -192,7 +208,12 @@ class MiniCoverage:
             print(f"[!] Failed to save coverage data to DB: {e}")
 
     def combine_data(self):
-        """Merges all partial DB files into the main database."""
+        """
+        Merge all partial coverage database files into the main database.
+
+        Handles attaching partial databases, copying data with context ID
+        re-mapping via label matching, and cleaning up partial files.
+        """
         main_db = self.config['data_file']
         conn = self._init_db(main_db)
         cur = conn.cursor()
@@ -204,19 +225,10 @@ class MiniCoverage:
                 alias = f"partial_{uuid.uuid4().hex}"
                 cur.execute(f"ATTACH DATABASE ? AS {alias}", (filename,))
 
-                # Merge Contexts (handle potential ID collisions by matching on Label?)
-                # Simplified strategy: Since partials generate local IDs, we might have ID collision.
-                # Production solution: Re-map IDs during merge.
-                # MVP solution: Assume single-process or low collision risk for now, or
-                # strictly rely on Labels matching.
-                # Ideally: Insert Ignore Labels, then select id map.
-
-                # Correct Merge Strategy:
-                # 1. Copy new contexts from partial, ignoring existing labels
+                # copy new contexts from partial, ignoring existing labels
                 cur.execute(f"INSERT OR IGNORE INTO contexts (label) SELECT label FROM {alias}.contexts")
 
-                # 2. Merge Lines (Re-mapping IDs via join on label)
-                # This complex SQL maps partial_id -> label -> main_id
+                # merge lines (re-mapping IDs via join on label)
                 sql_lines = f"""
                 INSERT OR IGNORE INTO lines (file_path, context_id, line_no)
                 SELECT l.file_path, main_c.id, l.line_no
@@ -226,7 +238,7 @@ class MiniCoverage:
                 """
                 cur.execute(sql_lines)
 
-                # 3. Merge Arcs
+                # merge arcs
                 sql_arcs = f"""
                 INSERT OR IGNORE INTO arcs (file_path, context_id, start_line, end_line)
                 SELECT a.file_path, main_c.id, a.start_line, a.end_line
@@ -248,14 +260,13 @@ class MiniCoverage:
         conn.close()
 
     def _load_from_db(self, conn):
-        """Populates self.trace_data from the given database connection."""
-        # Flattened loading for reporting (Report currently ignores context, merges all)
-        # Future: Update reporters to show per-context coverage
+        """
+        Populate in-memory trace data from the database.
+
+        Currently flattens data into the default context for reporting purposes.
+        """
         cur = conn.cursor()
 
-        # Load Lines (Merge all contexts into one set for backward compat reporting)
-        # We store them in 'default' context or context 0 for the in-memory structure
-        # used by current metrics.
         cur.execute("SELECT file_path, line_no FROM lines")
         for file, line in cur.fetchall():
             self.trace_data['lines'][file][0].add(line)
@@ -265,6 +276,12 @@ class MiniCoverage:
             self.trace_data['arcs'][file][0].add((start, end))
 
     def _patch_multiprocessing(self):
+        """
+        Monkey-patch multiprocessing.Process to support coverage in subprocesses.
+
+        Ensures that child processes initialize their own coverage engine,
+        collect data, and save it to disk upon exit.
+        """
         if hasattr(multiprocessing, '_mini_coverage_patched'):
             return
 
@@ -288,6 +305,14 @@ class MiniCoverage:
         multiprocessing._mini_coverage_patched = True
 
     def trace_function(self, frame, event, arg):
+        """
+        The main system trace callback.
+
+        Args:
+            frame: The current stack frame.
+            event: The trace event (e.g., 'line', 'call').
+            arg: Dependent on event type (unused for 'line').
+        """
         if event != 'line':
             return self.trace_function
 
@@ -322,6 +347,9 @@ class MiniCoverage:
         return self.trace_function
 
     def _should_trace(self, filename):
+        """
+        Determine if a file should be tracked based on project root and exclusions.
+        """
         abs_path = os.path.abspath(filename)
         if not abs_path.startswith(self.project_root):
             return False
@@ -336,8 +364,13 @@ class MiniCoverage:
         return True
 
     def analyze(self):
+        """
+        Perform static analysis and compare with collected dynamic data.
+
+        Returns:
+            dict: A mapping of filenames to metric statistics.
+        """
         full_results = {}
-        # Union all files across all contexts
         all_files = set(self.trace_data['lines'].keys()) | set(self.trace_data['arcs'].keys())
 
         for filename in all_files:
@@ -345,9 +378,7 @@ class MiniCoverage:
             if not ast_tree:
                 continue
 
-            # Prepare Bytecode (Code Object) if needed for BytecodeControlFlow metric
             code_obj = None
-            # Check if any metric needs bytecode
             if any(m.get_name() == "Bytecode" for m in self.metrics):
                 code_obj = self.parser.compile_source(filename)
 
@@ -355,14 +386,12 @@ class MiniCoverage:
             for metric in self.metrics:
                 possible = set()
 
-                # Metric-specific static analysis
                 if metric.get_name() == "Bytecode":
                     possible = metric.get_possible_elements(code_obj, ignored_lines)
                 else:
                     possible = metric.get_possible_elements(ast_tree, ignored_lines)
 
-                # Flatten execution data from all contexts for general reporting
-                # (Future: Pass context map to calculate_stats for detailed breakdown)
+                # flatten execution data from all contexts for general reporting
                 executed = set()
                 if metric.get_name() == "Statement":
                     for ctx_lines in self.trace_data['lines'][filename].values():
@@ -379,6 +408,13 @@ class MiniCoverage:
         return full_results
 
     def run(self, script_path, script_args=None):
+        """
+        Execute a target script under coverage tracking.
+
+        Args:
+            script_path (str): Path to the script to execute.
+            script_args (list): List of command-line arguments to pass to the script.
+        """
         abs_script_path = os.path.abspath(script_path)
         script_dir = os.path.dirname(abs_script_path)
 
@@ -416,6 +452,9 @@ class MiniCoverage:
             sys.path = original_path
 
     def report(self):
+        """
+        Combine data from parallel runs and generate reports.
+        """
         self.combine_data()
         results = self.analyze()
         self.reporter.print_report(results, self.project_root)
