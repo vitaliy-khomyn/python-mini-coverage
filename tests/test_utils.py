@@ -1,0 +1,58 @@
+import unittest
+import os
+import shutil
+import tempfile
+import sys
+from contextlib import contextmanager
+
+class BaseTestCase(unittest.TestCase):
+    """
+    Base class for tests that need temporary files or directories.
+    """
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.old_cwd = os.getcwd()
+        os.chdir(self.test_dir)
+
+    def tearDown(self):
+        os.chdir(self.old_cwd)
+        shutil.rmtree(self.test_dir)
+
+    def create_file(self, filename, content):
+        """
+        Helper to create a file with given content in the test dir.
+        Returns absolute path.
+        """
+        filepath = os.path.join(self.test_dir, filename)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return filepath
+
+    @contextmanager
+    def capture_stdout(self):
+        """
+        Captures stdout for testing console output.
+        """
+        new_out = io.StringIO()
+        old_out = sys.stdout
+        try:
+            sys.stdout = new_out
+            yield new_out
+        finally:
+            sys.stdout = old_out
+
+class MockFrame:
+    """
+    Simulates a Python stack frame for testing trace functions manually.
+    """
+    def __init__(self, filename, lineno, code_name="<module>"):
+        self.f_lineno = lineno
+        self.f_code = MockCode(filename, code_name)
+
+class MockCode:
+    def __init__(self, filename, name):
+        self.co_filename = filename
+        self.co_name = name
+
+import io
