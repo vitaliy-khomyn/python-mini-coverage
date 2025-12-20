@@ -2,6 +2,7 @@ import unittest
 import ast
 import os
 import textwrap
+import types
 from src.source_parser import SourceParser
 from tests.test_utils import BaseTestCase
 
@@ -34,8 +35,31 @@ class TestSourceParser(BaseTestCase):
         self.assertIsNone(tree)
         self.assertEqual(ignored, set())
 
+    def test_compile_source_valid(self):
+        # New test for Bytecode compilation
+        code = "print('hello')"
+        path = self.create_file("compile_valid.py", code)
+        code_obj = self.parser.compile_source(path)
+
+        self.assertIsInstance(code_obj, types.CodeType)
+        self.assertEqual(code_obj.co_filename, path)
+
+    def test_compile_source_syntax_error(self):
+        # New test for Bytecode compilation error
+        code = "if x:"  # Unexpected EOF
+        path = self.create_file("compile_invalid.py", code)
+        code_obj = self.parser.compile_source(path)
+
+        self.assertIsNone(code_obj)
+
+    def test_compile_source_non_existent(self):
+        code_obj = self.parser.compile_source("ghost_file.py")
+        self.assertIsNone(code_obj)
+
     def test_pragma_detection_simple(self):
         # Use dedent to fix indentation issues
+        # Fixed: Added backslash to prevent leading newline, ensuring
+        # line numbers match the assertion (1-based).
         code = textwrap.dedent("""\
         x = 1
         if x > 0:

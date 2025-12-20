@@ -4,7 +4,7 @@ import re
 
 class SourceParser:
     """
-    Responsible for File I/O, AST generation, and Pragma detection.
+    Responsible for File I/O, AST generation, Bytecode compilation, and Pragma detection.
     """
 
     def parse_source(self, filename):
@@ -31,3 +31,16 @@ class SourceParser:
 
         except (SyntaxError, OSError, UnicodeDecodeError):
             return None, set()
+
+    def compile_source(self, filename):
+        """
+        Compiles the source file into a Code Object (bytecode).
+        Returns the code object or None on failure.
+        """
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                source = f.read()
+            # 'exec' mode is used for module-level compilation
+            return compile(source, filename, 'exec')
+        except (SyntaxError, OSError, UnicodeDecodeError):
+            return None
