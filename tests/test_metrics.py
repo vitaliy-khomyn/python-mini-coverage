@@ -45,6 +45,8 @@ y = 2
 """
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
+        # Line 3 is a string constant. Line 4 is a number constant.
+        # Both should be ignored.
         self.assertEqual(lines, {2, 5})
 
     def test_pragma_ignore(self):
@@ -139,17 +141,7 @@ while x > 0:
     x -= 1
 y = 2
 """
-        # 2->3 (Enter), 2->4 (Exit)
-        # 3->2 (Loop back, implicit in AST analysis usually logic dependent)
-        # Note: The provided implementation does:
-        # Enter: 2->3
-        # Loop body (3) recurses with 'next=2'
-        # Exit: 2->4
         arcs = self.get_arcs(code)
-        # Wait, line 3 is a statement. The scanner sees line 3.
-        # Since line 3 is the last in body, and next_lineno passed to body is 'start' (2)
-        # But wait, line 3 is an Assignment, not a control flow. It doesn't generate arcs itself.
-        # The While node generates the arcs.
         self.assertEqual(arcs, {(2, 3), (2, 4)})
 
     def test_for_loop(self):
@@ -190,10 +182,6 @@ match x:
         y = 3
 z = 4
 """
-        # Match at 2.
-        # Case 1: 2 -> 4
-        # Case 2: 2 -> 6
-        # Case _: 2 -> 8
         arcs = self.get_arcs(code)
         self.assertTrue({(2, 4), (2, 6), (2, 8)}.issubset(arcs))
 
@@ -207,8 +195,6 @@ match x:
         pass
 end = 1
 """
-        # 2->4 (Case 1)
-        # 2->5 (Fallthrough because no wildcard)
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(2, 4), (2, 5)})
 
@@ -223,23 +209,6 @@ else:
         arcs = self.get_arcs(code, ignored={2})
         self.assertEqual(arcs, set())
 
-    def test_complex_structure_try_except(self):
-        # Note: The current implementation scans bodies of Try, but Try itself isn't a branching node in the simplified metrics
-        # (It doesn't generate arcs for exception jumps yet).
-        # We assume the implementation passes 'next' through.
-        code = """
-try:
-    if x:
-        y = 1
-except:
-    pass
-"""
-        # Inside try: 3->4 (True), 3->? (False)
-        # False jump of 3: implicit next.
-        # Next of 'if' is end of try block.
-        # The implementation relies on lexical 'next'.
-        pass
-
     def test_function_def_isolation(self):
         code = """
 def func():
@@ -249,9 +218,6 @@ z = 2
 """
         # Function def at 2. Body at 3.
         # 'z=2' is at 5.
-        # The 'if' at 3 has next_lineno=None because it's end of function body.
-        # 3->4 (True).
-        # 3->None (False). If next is None, no arc added for implicit else.
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(3, 4)})
 
@@ -262,10 +228,7 @@ for i in range(10):
         continue
     x += 1
 """
-        # For(2): 2->3 (Enter), 2->None (Exit - no next stmt)
-        # If(3): 3->4 (True), 3->5 (False/Fallthrough)
         arcs = self.get_arcs(code)
-        # Note: 'Exit' of For loop (2) has no target line in this snippet, so (2, None) is ignored.
         self.assertEqual(arcs, {(2, 3), (3, 4), (3, 5)})
 
 
@@ -280,27 +243,20 @@ class TestConditionCoverage(TestMetricsBase):
 
     def test_simple_and(self):
         code = "if a and b:\n    pass"
-        # Line 1 has 'a' and 'b' in a BoolOp.
-        # We expect 2 conditions at line 1.
         conditions = self.get_conditions(code)
         self.assertEqual(len(conditions), 2)
-        # Verify line number is 1
         lines = {c[0] for c in conditions}
         self.assertEqual(lines, {1})
 
     def test_mixed_bool_ops(self):
         code = "res = (a or b) and c"
-        # (a or b) is one BoolOp (2 conditions)
-        # ... and c is another BoolOp.
-        # AST structure: BoolOp(and, [BoolOp(or, [a, b]), c])
-        # Outer AND has 2 values: [Group(a or b), c] -> 2 conditions?
-        # Inner OR has 2 values: [a, b] -> 2 conditions.
-        # Total conditions identified by walker: 4?
-        # Let's check the walker logic: it walks all nodes.
-        # It finds BoolOp(and) -> adds 2 values.
-        # It finds BoolOp(or) -> adds 2 values.
-        # Ideally, MCDC cares about atomic conditions.
-        # But statically finding BoolOp nodes is the first step.
+        # AST: BoolOp(and, values=[BoolOp(or, values=[a, b]), c])
+        # We now use (lineno, col, type) so we should differentiate:
+        # 1. 'a' (Name)
+        # 2. 'b' (Name)
+        # 3. 'a or b' (BoolOp) - this is a value in the outer AND
+        # 4. 'c' (Name)
+        # Total = 4 distinct conditions
         conditions = self.get_conditions(code)
         self.assertEqual(len(conditions), 4)
 

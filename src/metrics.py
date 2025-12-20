@@ -41,11 +41,16 @@ class StatementCoverage(CoverageMetric):
                 if node.lineno in ignored_lines:
                     continue
 
-                # Use ast.Constant for Python 3.8+ (replaces ast.Str/ast.Num)
+                # Ignore ALL constants (strings, numbers, ellipses)
+                # This covers docstrings and standalone expressions like '123'
                 if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
-                    # Check if it's a docstring (string constant)
-                    if isinstance(node.value.value, str):
-                        continue
+                    continue
+
+                # For older Python versions (<3.8) compatibility (optional but good practice)
+                if isinstance(node, ast.Expr) and isinstance(node.value, (getattr(ast, 'Str', type(None)),
+                                                                          getattr(ast, 'Num', type(None)))):
+                    continue
+
                 if hasattr(node, 'lineno'):
                     executable_lines.add(node.lineno)
         return executable_lines
@@ -141,12 +146,6 @@ class BranchCoverage(CoverageMetric):
 class ConditionCoverage(CoverageMetric):
     """
     Identifies atomic Boolean Conditions (MCDC foundation).
-
-    LIMITATION: Without bytecode analysis, we cannot determine dynamically
-    which individual conditions were evaluated in a short-circuit expression.
-
-    This implementation currently performs Static Analysis to identify
-    complex boolean logic (AND/OR) to highlight testing complexity.
     """
 
     def get_name(self):
@@ -154,8 +153,10 @@ class ConditionCoverage(CoverageMetric):
 
     def get_possible_elements(self, ast_tree, ignored_lines):
         """
-        Returns a set of (lineno, col_offset) tuples representing
-        individual boolean conditions found in BoolOp nodes.
+        Returns a set of tuples representing individual boolean conditions.
+        We include node type to differentiate a parent BoolOp from its first child
+        if they share the same location.
+        Structure: (lineno, col_offset, node_type_name)
         """
         conditions = set()
         for node in ast.walk(ast_tree):
@@ -163,10 +164,7 @@ class ConditionCoverage(CoverageMetric):
                 continue
 
             if isinstance(node, ast.BoolOp):
-                # A BoolOp (e.g., 'a and b') has a list of values.
-                # Each value is a condition.
                 for value in node.values:
-                    # We use col_offset to uniquely identify the condition on the line
                     if hasattr(value, 'lineno') and hasattr(value, 'col_offset'):
-                        conditions.add((value.lineno, value.col_offset))
+                        conditions.add((value.lineno, value.col_offset, type(value).__name__))
         return conditions

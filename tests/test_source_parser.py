@@ -1,5 +1,7 @@
+import unittest
 import ast
 import os
+import textwrap
 from src.source_parser import SourceParser
 from tests.test_utils import BaseTestCase
 
@@ -33,37 +35,36 @@ class TestSourceParser(BaseTestCase):
         self.assertEqual(ignored, set())
 
     def test_pragma_detection_simple(self):
-        code = """
+        # Use dedent to fix indentation issues
+        code = textwrap.dedent("""
         x = 1
         if x > 0:
             print("ignored") # pragma: no cover
-        """
+        """)
         path = self.create_file("pragma.py", code)
         tree, ignored = self.parser.parse_source(path)
 
-        # Line 4 should be ignored
-        # Note: Depending on dedent, line numbers might shift if not careful.
-        # But create_file writes exactly what is passed.
-        # The line '    print("ignored") # pragma: no cover' is line 4.
-        self.assertIn(4, ignored)
+        # Line 3: print("ignored")...
+        self.assertIn(3, ignored)
         self.assertEqual(len(ignored), 1)
 
     def test_pragma_detection_case_insensitive(self):
-        code = """
+        code = textwrap.dedent("""
         x = 1 # PRAGMA: NO COVER
         y = 2 # pragma: no cover
         z = 3 # Pragma: No Cover
-        """
+        """)
         path = self.create_file("pragma_case.py", code)
         _, ignored = self.parser.parse_source(path)
+        # Lines 2, 3, 4
         self.assertEqual(ignored, {2, 3, 4})
 
     def test_pragma_detection_whitespace_variations(self):
-        code = """
+        code = textwrap.dedent("""
         a = 1 #pragma:no cover
         b = 2 #    pragma:    no    cover   
         c = 3 # something else pragma: no cover
-        """
+        """)
         path = self.create_file("pragma_spaces.py", code)
         _, ignored = self.parser.parse_source(path)
         self.assertEqual(ignored, {2, 3, 4})
@@ -87,10 +88,9 @@ class TestSourceParser(BaseTestCase):
         self.assertIn(1, ignored)
 
     def test_binary_file_handling(self):
-        # Should gracefully fail on binary files
         filepath = os.path.join(self.test_dir, "binary.bin")
         with open(filepath, 'wb') as f:
-            f.write(b'\x80\x00\x00')  # Garbage binary
+            f.write(b'\x80\x00\x00')
 
         tree, ignored = self.parser.parse_source(filepath)
         self.assertIsNone(tree)

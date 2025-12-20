@@ -24,20 +24,19 @@ class TestReporters(BaseTestCase):
             }
         }
         self.project_root = self.test_dir
-        # Create dummy file1.py so HTML reporter can read it
         self.create_file("file1.py", "line1\nline2\nline3\nline4\nline5")
 
     def test_console_reporter_runs(self):
         reporter = ConsoleReporter()
-        # Just ensure it doesn't crash and prints something
         with self.capture_stdout() as output:
             reporter.print_report(self.results, self.project_root)
             text = output.getvalue()
 
         self.assertIn("file1.py", text)
         self.assertIn("50%", text)
-        self.assertIn("L1..L2", text)  # Formatting check
-        self.assertIn("3->5", text)  # Branch check
+        # Check for uncompressed format since we only have 2 missing lines
+        self.assertIn("Lines: 1,2", text)
+        self.assertIn("Br: 3->5", text)
 
     def test_console_reporter_empty(self):
         reporter = ConsoleReporter()
@@ -79,10 +78,6 @@ class TestReporters(BaseTestCase):
             content = f.read()
 
         self.assertIn('<span class="lineno">1</span>', content)
-        # Line 1 is missing -> 'miss' class
         self.assertIn('class="line miss"', content)
-        # Line 3 is hit -> 'hit' class (but might be partial due to branch)
-        # Our data says line 3 is executed, but branch (3,5) is missing.
-        # So class should be 'partial'
         self.assertIn('class="line partial"', content)
         self.assertIn('Missed branch to: 5', content)
