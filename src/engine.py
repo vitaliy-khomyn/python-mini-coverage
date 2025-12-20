@@ -11,7 +11,7 @@ import fnmatch
 # Relative imports assuming running as a package
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
-from .metrics import StatementCoverage, BranchCoverage
+from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage
 from .reporters import ConsoleReporter, HtmlReporter
 
 
@@ -31,7 +31,7 @@ class MiniCoverage:
         }
 
         self.parser = SourceParser()
-        self.metrics = [StatementCoverage(), BranchCoverage()]
+        self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage()]
         self.reporter = ConsoleReporter()
         self.html_reporter = HtmlReporter()
 
@@ -251,6 +251,7 @@ class MiniCoverage:
         all_files = set(self.trace_data['lines'].keys()) | set(self.trace_data['arcs'].keys())
 
         for filename in all_files:
+            # Parse source AND ignored lines (pragmas)
             ast_tree, ignored_lines = self.parser.parse_source(filename)
             if not ast_tree:
                 continue

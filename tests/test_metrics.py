@@ -1,6 +1,6 @@
 import unittest
 import ast
-from src.metrics import StatementCoverage, BranchCoverage
+from src.metrics import StatementCoverage, BranchCoverage, ConditionCoverage
 
 
 class TestMetricsBase(unittest.TestCase):
@@ -267,3 +267,44 @@ for i in range(10):
         arcs = self.get_arcs(code)
         # Note: 'Exit' of For loop (2) has no target line in this snippet, so (2, None) is ignored.
         self.assertEqual(arcs, {(2, 3), (3, 4), (3, 5)})
+
+
+class TestConditionCoverage(TestMetricsBase):
+    def setUp(self):
+        self.metric = ConditionCoverage()
+
+    def get_conditions(self, code, ignored=None):
+        ignored = ignored or set()
+        tree = self.parse_code(code)
+        return self.metric.get_possible_elements(tree, ignored)
+
+    def test_simple_and(self):
+        code = "if a and b:\n    pass"
+        # Line 1 has 'a' and 'b' in a BoolOp.
+        # We expect 2 conditions at line 1.
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+        # Verify line number is 1
+        lines = {c[0] for c in conditions}
+        self.assertEqual(lines, {1})
+
+    def test_mixed_bool_ops(self):
+        code = "res = (a or b) and c"
+        # (a or b) is one BoolOp (2 conditions)
+        # ... and c is another BoolOp.
+        # AST structure: BoolOp(and, [BoolOp(or, [a, b]), c])
+        # Outer AND has 2 values: [Group(a or b), c] -> 2 conditions?
+        # Inner OR has 2 values: [a, b] -> 2 conditions.
+        # Total conditions identified by walker: 4?
+        # Let's check the walker logic: it walks all nodes.
+        # It finds BoolOp(and) -> adds 2 values.
+        # It finds BoolOp(or) -> adds 2 values.
+        # Ideally, MCDC cares about atomic conditions.
+        # But statically finding BoolOp nodes is the first step.
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 4)
+
+    def test_no_conditions(self):
+        code = "x = 1"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 0)

@@ -136,3 +136,37 @@ class BranchCoverage(CoverageMetric):
                 self._scan_body(node.orelse, arcs, next_lineno, ignored_lines)
             if hasattr(node, 'finalbody') and isinstance(node.finalbody, list):
                 self._scan_body(node.finalbody, arcs, next_lineno, ignored_lines)
+
+
+class ConditionCoverage(CoverageMetric):
+    """
+    Identifies atomic Boolean Conditions (MCDC foundation).
+
+    LIMITATION: Without bytecode analysis, we cannot determine dynamically
+    which individual conditions were evaluated in a short-circuit expression.
+
+    This implementation currently performs Static Analysis to identify
+    complex boolean logic (AND/OR) to highlight testing complexity.
+    """
+
+    def get_name(self):
+        return "Condition"
+
+    def get_possible_elements(self, ast_tree, ignored_lines):
+        """
+        Returns a set of (lineno, col_offset) tuples representing
+        individual boolean conditions found in BoolOp nodes.
+        """
+        conditions = set()
+        for node in ast.walk(ast_tree):
+            if hasattr(node, 'lineno') and node.lineno in ignored_lines:
+                continue
+
+            if isinstance(node, ast.BoolOp):
+                # A BoolOp (e.g., 'a and b') has a list of values.
+                # Each value is a condition.
+                for value in node.values:
+                    # We use col_offset to uniquely identify the condition on the line
+                    if hasattr(value, 'lineno') and hasattr(value, 'col_offset'):
+                        conditions.add((value.lineno, value.col_offset))
+        return conditions
