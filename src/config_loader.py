@@ -1,5 +1,6 @@
 import os
 import configparser
+from typing import Optional, Dict, Any, Set
 
 
 class ConfigLoader:
@@ -7,7 +8,7 @@ class ConfigLoader:
     Loads configuration settings from standard config files.
     """
 
-    def load_config(self, project_root, config_file=None):
+    def load_config(self, project_root: str, config_file: Optional[str] = None) -> Dict[str, Any]:
         """
         Load configuration from .coveragerc, setup.cfg, or a specified file.
 
@@ -18,12 +19,13 @@ class ConfigLoader:
         Returns:
             dict: Configuration dictionary with keys like 'omit' (set) and 'data_file' (str).
         """
-        config = {
+        config: Dict[str, Any] = {
             'omit': set(),
             'data_file': '.coverage.db'
         }
 
         candidates = [config_file] if config_file else ['.coveragerc', 'setup.cfg', 'tox.ini']
+
         parser = configparser.ConfigParser()
 
         for cand in candidates:
@@ -32,7 +34,8 @@ class ConfigLoader:
             if os.path.exists(path):
                 try:
                     parser.read(path)
-                    section = None
+
+                    section: Optional[str] = None
                     if parser.has_section('run'):
                         section = 'run'
                     elif parser.has_section('coverage:run'):

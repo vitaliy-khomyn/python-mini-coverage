@@ -1,6 +1,12 @@
 import os
 import html
 import collections
+from typing import Dict, Any, Optional
+
+# Type aliases for clarity
+CoverageStats = Dict[str, Any]
+FileResults = Dict[str, CoverageStats]
+AnalysisResults = Dict[str, FileResults]
 
 
 class ConsoleReporter:
@@ -8,7 +14,7 @@ class ConsoleReporter:
     Outputs coverage statistics to the standard output.
     """
 
-    def print_report(self, results, project_root):
+    def print_report(self, results: AnalysisResults, project_root: str) -> None:
         """
         Format and print the coverage table.
 
@@ -25,10 +31,13 @@ class ConsoleReporter:
             file_data = results[filename]
             stmt_data = file_data.get('Statement')
             branch_data = file_data.get('Branch')
-            self._print_row(filename, stmt_data, branch_data, project_root)
+            # Statement data is assumed to exist if file is in results
+            if stmt_data:
+                self._print_row(filename, stmt_data, branch_data, project_root)
         print("=" * 100)
 
-    def _print_row(self, filename, stmt_data, branch_data, project_root):
+    def _print_row(self, filename: str, stmt_data: CoverageStats, branch_data: Optional[CoverageStats],
+                   project_root: str) -> None:
         """
         Print a single row of the report table.
         """
@@ -80,10 +89,10 @@ class HtmlReporter:
     Generates a static HTML website visualizing coverage.
     """
 
-    def __init__(self, output_dir="htmlcov"):
+    def __init__(self, output_dir: str = "htmlcov") -> None:
         self.output_dir = output_dir
 
-    def generate(self, results, project_root):
+    def generate(self, results: AnalysisResults, project_root: str) -> None:
         """
         Create the HTML report directory and files.
 
@@ -101,7 +110,7 @@ class HtmlReporter:
         for filename, data in results.items():
             self._generate_file_report(filename, data, project_root)
 
-    def _generate_index(self, results, project_root):
+    def _generate_index(self, results: AnalysisResults, project_root: str) -> None:
         """
         Generate the index.html dashboard.
         """
@@ -110,7 +119,10 @@ class HtmlReporter:
 
         rows = []
         for filename in sorted(results.keys()):
-            stmt = results[filename]['Statement']
+            stmt = results[filename].get('Statement')
+            if not stmt:
+                continue
+
             possible = len(stmt['possible'])
             miss = len(stmt['missing'])
             total_stmts += possible
@@ -171,7 +183,7 @@ class HtmlReporter:
         with open(os.path.join(self.output_dir, "index.html"), "w") as f:
             f.write(html_content)
 
-    def _generate_file_report(self, filename, data, project_root):
+    def _generate_file_report(self, filename: str, data: FileResults, project_root: str) -> None:
         """
         Generate a detailed HTML page for a single source file.
         """
@@ -179,6 +191,9 @@ class HtmlReporter:
         out_name = f"{self._sanitize_filename(rel_name)}.html"
 
         stmt_data = data.get('Statement')
+        if not stmt_data:
+            return
+
         executed_lines = stmt_data['executed']
         missing_lines = stmt_data['missing']
 
@@ -248,7 +263,7 @@ class HtmlReporter:
         with open(os.path.join(self.output_dir, out_name), "w") as f:
             f.write(html_content)
 
-    def _sanitize_filename(self, path):
+    def _sanitize_filename(self, path: str) -> str:
         """
         Convert a file path to a safe filename for the HTML report.
         """

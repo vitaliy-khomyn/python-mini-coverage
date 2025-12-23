@@ -7,6 +7,8 @@ import sqlite3
 import glob
 import uuid
 import fnmatch
+import types
+from typing import Optional, List, Dict, Any, Set, Tuple
 
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
@@ -15,7 +17,7 @@ from .reporters import ConsoleReporter, HtmlReporter
 
 
 class MiniCoverage:
-    def __init__(self, project_root=None, config_file=None):
+    def __init__(self, project_root: Optional[str] = None, config_file: Optional[str] = None) -> None:
         """
         Initialize the coverage engine.
 
@@ -23,22 +25,22 @@ class MiniCoverage:
             project_root (str): The root directory to restrict tracing to.
             config_file (str): Optional path to a configuration file.
         """
-        self.project_root = os.path.abspath(project_root) if project_root else os.getcwd()
-        self.config_file = config_file
+        self.project_root: str = os.path.abspath(project_root) if project_root else os.getcwd()
+        self.config_file: Optional[str] = config_file
 
         self.config_loader = ConfigLoader()
-        self.config = self.config_loader.load_config(self.project_root, config_file)
+        self.config: Dict[str, Any] = self.config_loader.load_config(self.project_root, config_file)
 
         # structure: {filename: {context_id: {lines}}}
-        self.trace_data = {
+        self.trace_data: Dict[str, Dict[Any, Any]] = {
             'lines': collections.defaultdict(lambda: collections.defaultdict(set)),
             'arcs': collections.defaultdict(lambda: collections.defaultdict(set))
         }
 
-        self.current_context = "default"
-        self.context_cache = {"default": 0}
-        self.reverse_context_cache = {0: "default"}
-        self._next_context_id = 1
+        self.current_context: str = "default"
+        self.context_cache: Dict[str, int] = {"default": 0}
+        self.reverse_context_cache: Dict[int, str] = {0: "default"}
+        self._next_context_id: int = 1
         self._context_lock = threading.Lock()
 
         self.parser = SourceParser()
@@ -46,14 +48,14 @@ class MiniCoverage:
         self.reporter = ConsoleReporter()
         self.html_reporter = HtmlReporter()
 
-        self._cache_traceable = {}
-        self.excluded_files = {os.path.abspath(__file__)}
+        self._cache_traceable: Dict[str, bool] = {}
+        self.excluded_files: Set[str] = {os.path.abspath(__file__)}
         self.thread_local = threading.local()
 
-        self.pid = os.getpid()
-        self.uuid = uuid.uuid4().hex[:6]
+        self.pid: int = os.getpid()
+        self.uuid: str = uuid.uuid4().hex[:6]
 
-    def switch_context(self, context_label):
+    def switch_context(self, context_label: str) -> None:
         """
         Switch the current recording context.
 
@@ -72,14 +74,14 @@ class MiniCoverage:
 
             self.current_context = context_label
 
-    def _get_current_context_id(self):
+    def _get_current_context_id(self) -> int:
         """
         Retrieve the integer ID for the active context.
         """
         # optimization: fast lookup without lock if possible (GIL makes dict read atomic-ish)
         return self.context_cache.get(self.current_context, 0)
 
-    def _init_db(self, db_path):
+    def _init_db(self, db_path: str) -> sqlite3.Connection:
         """
         Initialize the SQLite database schema.
 
@@ -160,7 +162,7 @@ class MiniCoverage:
         conn.commit()
         return conn
 
-    def save_data(self):
+    def save_data(self) -> None:
         """
         Dump the in-memory coverage data to a unique SQLite file.
 
@@ -207,7 +209,7 @@ class MiniCoverage:
         except Exception as e:
             print(f"[!] Failed to save coverage data to DB: {e}")
 
-    def combine_data(self):
+    def combine_data(self) -> None:
         """
         Merge all partial coverage database files into the main database.
 
@@ -259,7 +261,7 @@ class MiniCoverage:
         self._load_from_db(conn)
         conn.close()
 
-    def _load_from_db(self, conn):
+    def _load_from_db(self, conn: sqlite3.Connection) -> None:
         """
         Populate in-memory trace data from the database.
 
@@ -275,7 +277,7 @@ class MiniCoverage:
         for file, start, end in cur.fetchall():
             self.trace_data['arcs'][file][0].add((start, end))
 
-    def _patch_multiprocessing(self):
+    def _patch_multiprocessing(self) -> None:
         """
         Monkey-patch multiprocessing.Process to support coverage in subprocesses.
 
@@ -290,7 +292,7 @@ class MiniCoverage:
         config_file = self.config_file
 
         class CoverageProcess(OriginalProcess):
-            def run(self):
+            def run(self) -> None:
                 cov = MiniCoverage(project_root=project_root, config_file=config_file)
                 sys.settrace(cov.trace_function)
                 threading.settrace(cov.trace_function)
@@ -302,9 +304,9 @@ class MiniCoverage:
                     cov.save_data()
 
         multiprocessing.Process = CoverageProcess
-        multiprocessing._mini_coverage_patched = True
+        multiprocessing._mini_coverage_patched = True  # type: ignore
 
-    def trace_function(self, frame, event, arg):
+    def trace_function(self, frame: types.FrameType, event: str, arg: Any) -> Any:
         """
         The main system trace callback.
 
@@ -346,7 +348,7 @@ class MiniCoverage:
 
         return self.trace_function
 
-    def _should_trace(self, filename):
+    def _should_trace(self, filename: str) -> bool:
         """
         Determine if a file should be tracked based on project root and exclusions.
         """
@@ -363,7 +365,7 @@ class MiniCoverage:
 
         return True
 
-    def analyze(self):
+    def analyze(self) -> Dict[str, Dict[str, Any]]:
         """
         Perform static analysis and compare with collected dynamic data.
 
@@ -387,7 +389,7 @@ class MiniCoverage:
                 possible = set()
 
                 if metric.get_name() == "Bytecode":
-                    possible = metric.get_possible_elements(code_obj, ignored_lines)
+                    possible = metric.get_possible_elements(code_obj, ignored_lines)  # type: ignore
                 else:
                     possible = metric.get_possible_elements(ast_tree, ignored_lines)
 
@@ -407,7 +409,7 @@ class MiniCoverage:
 
         return full_results
 
-    def run(self, script_path, script_args=None):
+    def run(self, script_path: str, script_args: Optional[List[str]] = None) -> None:
         """
         Execute a target script under coverage tracking.
 
@@ -451,7 +453,7 @@ class MiniCoverage:
             sys.argv = original_argv
             sys.path = original_path
 
-    def report(self):
+    def report(self) -> None:
         """
         Combine data from parallel runs and generate reports.
         """
