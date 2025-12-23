@@ -13,7 +13,7 @@ from typing import Optional, List, Dict, Any, Set, Tuple
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
 from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage, BytecodeControlFlow
-from .reporters import ConsoleReporter, HtmlReporter
+from .reporters import BaseReporter, ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter
 
 
 class MiniCoverage:
@@ -45,8 +45,14 @@ class MiniCoverage:
 
         self.parser = SourceParser()
         self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage()]
-        self.reporter = ConsoleReporter()
-        self.html_reporter = HtmlReporter()
+
+        # initialized reporters list (extensible)
+        self.reporters: List[BaseReporter] = [
+            ConsoleReporter(),
+            HtmlReporter(output_dir="htmlcov"),
+            XmlReporter(output_file="coverage.xml"),
+            JsonReporter(output_file="coverage.json")
+        ]
 
         self._cache_traceable: Dict[str, bool] = {}
         self.excluded_files: Set[str] = {os.path.abspath(__file__)}
@@ -420,9 +426,10 @@ class MiniCoverage:
 
     def report(self) -> None:
         """
-        Combine data from parallel runs and generate reports.
+        Combine data from parallel runs and generate reports using all registered reporters.
         """
         self.combine_data()
         results = self.analyze()
-        self.reporter.print_report(results, self.project_root)
-        self.html_reporter.generate(results, self.project_root)
+
+        for reporter in self.reporters:
+            reporter.generate(results, self.project_root)

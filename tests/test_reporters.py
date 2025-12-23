@@ -1,6 +1,8 @@
 import unittest
 import os
-from src.reporters import ConsoleReporter, HtmlReporter
+import json
+import xml.etree.ElementTree as ET
+from src.reporters import ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter
 from tests.test_utils import BaseTestCase
 
 
@@ -19,6 +21,7 @@ class TestReporters(BaseTestCase):
                 'Branch': {
                     'pct': 0.0,
                     'missing': {(3, 5)},
+                    'executed': set(),
                     'possible': {(3, 5)}
                 }
             }
@@ -29,7 +32,7 @@ class TestReporters(BaseTestCase):
     def test_console_reporter_runs(self):
         reporter = ConsoleReporter()
         with self.capture_stdout() as output:
-            reporter.print_report(self.results, self.project_root)
+            reporter.generate(self.results, self.project_root)
             text = output.getvalue()
 
         self.assertIn("file1.py", text)
@@ -41,7 +44,7 @@ class TestReporters(BaseTestCase):
     def test_console_reporter_empty(self):
         reporter = ConsoleReporter()
         with self.capture_stdout() as output:
-            reporter.print_report({}, self.project_root)
+            reporter.generate({}, self.project_root)
             text = output.getvalue()
         self.assertIn("File", text)
 
@@ -81,3 +84,43 @@ class TestReporters(BaseTestCase):
         self.assertIn('class="line miss"', content)
         self.assertIn('class="line partial"', content)
         self.assertIn('Missed branch to: 5', content)
+
+    def test_xml_reporter_generation(self):
+        out_file = os.path.join(self.test_dir, "coverage.xml")
+        reporter = XmlReporter(output_file=out_file)
+
+        with self.capture_stdout():
+            reporter.generate(self.results, self.project_root)
+
+        self.assertTrue(os.path.exists(out_file))
+
+        tree = ET.parse(out_file)
+        root = tree.getroot()
+        self.assertEqual(root.tag, "coverage")
+        self.assertEqual(root.attrib["line-rate"], "0.5")
+
+        classes = root.find(".//classes")
+        self.assertIsNotNone(classes)
+
+        cls = classes.find("class")
+        self.assertIn("file1.py", cls.attrib["filename"])
+
+        lines = cls.find("lines")
+        line_elems = lines.findall("line")
+        self.assertEqual(len(line_elems), 4)  # 1, 2, 3, 4
+
+    def test_json_reporter_generation(self):
+        out_file = os.path.join(self.test_dir, "coverage.json")
+        reporter = JsonReporter(output_file=out_file)
+
+        with self.capture_stdout():
+            reporter.generate(self.results, self.project_root)
+
+        self.assertTrue(os.path.exists(out_file))
+
+        with open(out_file) as f:
+            data = json.load(f)
+
+        self.assertIn("file1.py", data["files"])
+        self.assertEqual(data["files"]["file1.py"]["Statement"]["pct"], 50.0)
+        self.assertEqual(data["files"]["file1.py"]["Statement"]["missing"], [1, 2])
