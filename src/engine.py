@@ -93,13 +93,8 @@ class MiniCoverage:
         cur.execute("""
                     CREATE TABLE IF NOT EXISTS contexts
                     (
-                        id
-                        INTEGER
-                        PRIMARY
-                        KEY,
-                        label
-                        TEXT
-                        UNIQUE
+                        id    INTEGER PRIMARY KEY,
+                        label TEXT UNIQUE
                     )
                     """)
 
@@ -109,55 +104,23 @@ class MiniCoverage:
         cur.execute("""
                     CREATE TABLE IF NOT EXISTS lines
                     (
-                        file_path
-                        TEXT,
-                        context_id
-                        INTEGER,
-                        line_no
-                        INTEGER,
-                        PRIMARY
-                        KEY
-                    (
-                        file_path,
-                        context_id,
-                        line_no
-                    ),
-                        FOREIGN KEY
-                    (
-                        context_id
-                    ) REFERENCES contexts
-                    (
-                        id
+                        file_path  TEXT,
+                        context_id INTEGER,
+                        line_no    INTEGER,
+                        PRIMARY KEY (file_path, context_id, line_no),
+                        FOREIGN KEY (context_id) REFERENCES contexts (id)
                     )
-                        )
                     """)
         cur.execute("""
                     CREATE TABLE IF NOT EXISTS arcs
                     (
-                        file_path
-                        TEXT,
-                        context_id
-                        INTEGER,
-                        start_line
-                        INTEGER,
-                        end_line
-                        INTEGER,
-                        PRIMARY
-                        KEY
-                    (
-                        file_path,
-                        context_id,
-                        start_line,
-                        end_line
-                    ),
-                        FOREIGN KEY
-                    (
-                        context_id
-                    ) REFERENCES contexts
-                    (
-                        id
+                        file_path  TEXT,
+                        context_id INTEGER,
+                        start_line INTEGER,
+                        end_line   INTEGER,
+                        PRIMARY KEY (file_path, context_id, start_line, end_line),
+                        FOREIGN KEY (context_id) REFERENCES contexts (id)
                     )
-                        )
                     """)
         conn.commit()
         return conn
@@ -375,8 +338,10 @@ class MiniCoverage:
         full_results = {}
         all_files = set(self.trace_data['lines'].keys()) | set(self.trace_data['arcs'].keys())
 
+        exclude_patterns = self.config.get('exclude_lines', set())
+
         for filename in all_files:
-            ast_tree, ignored_lines = self.parser.parse_source(filename)
+            ast_tree, ignored_lines = self.parser.parse_source(filename, exclude_patterns)
             if not ast_tree:
                 continue
 
