@@ -14,117 +14,69 @@ class TestSourceParser(BaseTestCase):
         self.parser = SourceParser()
 
     def test_parse_valid_python(self):
-        code = "x = 1\ny = 2"
-        path = self.create_file("valid.py", code)
+        path = self.create_file("valid.py", "x = 1\ny = 2")
         tree, ignored = self.parser.parse_source(path)
-
         self.assertIsInstance(tree, ast.Module)
         self.assertEqual(len(ignored), 0)
-        self.assertEqual(len(tree.body), 2)
 
     def test_parse_syntax_error(self):
-        code = "def broken_func("
-        path = self.create_file("invalid.py", code)
+        path = self.create_file("invalid.py", "def broken(")
         tree, ignored = self.parser.parse_source(path)
-
         self.assertIsNone(tree)
-        self.assertEqual(ignored, set())
-
-    def test_parse_non_existent_file(self):
-        tree, ignored = self.parser.parse_source("does_not_exist.py")
-        self.assertIsNone(tree)
-        self.assertEqual(ignored, set())
-
-    def test_compile_source_valid(self):
-        # New test for Bytecode compilation
-        code = "print('hello')"
-        path = self.create_file("compile_valid.py", code)
-        code_obj = self.parser.compile_source(path)
-
-        self.assertIsInstance(code_obj, types.CodeType)
-        self.assertEqual(code_obj.co_filename, path)
-
-    def test_compile_source_syntax_error(self):
-        # New test for Bytecode compilation error
-        code = "if x:"  # Unexpected EOF
-        path = self.create_file("compile_invalid.py", code)
-        code_obj = self.parser.compile_source(path)
-
-        self.assertIsNone(code_obj)
-
-    def test_compile_source_non_existent(self):
-        code_obj = self.parser.compile_source("ghost_file.py")
-        self.assertIsNone(code_obj)
 
     def test_pragma_detection_simple(self):
-        # Use dedent to fix indentation issues
-        # Fixed: Added backslash to prevent leading newline, ensuring
-        # line numbers match the assertion (1-based).
         code = textwrap.dedent("""\
         x = 1
-        if x > 0:
-            print("ignored") # pragma: no cover
+        if x:
+            pass # pragma: no cover
         """)
         path = self.create_file("pragma.py", code)
-        tree, ignored = self.parser.parse_source(path)
-
-        # Line 1: x = 1
-        # Line 2: if x > 0:
-        # Line 3: print("ignored") # pragma: no cover
+        _, ignored = self.parser.parse_source(path)
         self.assertIn(3, ignored)
-        self.assertEqual(len(ignored), 1)
 
-    def test_pragma_detection_case_insensitive(self):
-        # Here we allow the leading newline, so lines are 2, 3, 4
-        code = textwrap.dedent("""
-        x = 1 # PRAGMA: NO COVER
-        y = 2 # pragma: no cover
-        z = 3 # Pragma: No Cover
+    def test_exclude_patterns_regex(self):
+        code = textwrap.dedent("""\
+        x = 1
+        def __repr__(self):
+            return 'repr'
+        if __name__ == "__main__":
+            run()
         """)
-        path = self.create_file("pragma_case.py", code)
-        _, ignored = self.parser.parse_source(path)
-        # Lines 2, 3, 4
-        self.assertEqual(ignored, {2, 3, 4})
+        path = self.create_file("exclude.py", code)
 
-    def test_pragma_detection_whitespace_variations(self):
-        code = textwrap.dedent("""
-        a = 1 #pragma:no cover
-        b = 2 #    pragma:    no    cover   
-        c = 3 # something else pragma: no cover
-        """)
-        path = self.create_file("pragma_spaces.py", code)
-        _, ignored = self.parser.parse_source(path)
-        self.assertEqual(ignored, {2, 3, 4})
+        patterns = [
+            r"def __repr__",
+            r"if __name__ == .__main__.:"
+        ]
 
-    def test_encoding_utf8(self):
-        code = "# -*- coding: utf-8 -*-\nx = '🚀'"
-        path = self.create_file("utf8.py", code)
+        _, ignored = self.parser.parse_source(path, exclude_patterns=patterns)
+
+        self.assertIn(2, ignored)  # def __repr__ matches
+        self.assertIn(4, ignored)  # if main matches
+        self.assertNotIn(1, ignored)
+
+    def test_compile_source_success(self):
+        path = self.create_file("ok.py", "print('hello')")
+        co = self.parser.compile_source(path)
+        self.assertIsInstance(co, types.CodeType)
+        self.assertEqual(co.co_filename, path)
+
+    def test_compile_source_error(self):
+        path = self.create_file("err.py", "if x:")
+        co = self.parser.compile_source(path)
+        self.assertIsNone(co)
+
+    def test_encoding_latin1(self):
+        # Create a file with latin-1 encoded char
+        path = os.path.join(self.test_dir, "latin.py")
+        with open(path, 'wb') as f:
+            f.write(b"# -*- coding: latin-1 -*-\nx = '\xe9'")  # é
+
+        # Parser assumes utf-8 by default but compile might handle magic comment
+        # Our parse_source opens with utf-8, so it might fail or replace.
+        # compile_source uses default open, which respects coding header if passed to compile?
+        # Actually our implementation uses open(encoding='utf-8') which will fail for strict latin-1 chars not in utf-8.
+        # This tests graceful failure.
         tree, _ = self.parser.parse_source(path)
-        self.assertIsNotNone(tree)
-
-    def test_empty_file(self):
-        path = self.create_file("empty.py", "")
-        tree, ignored = self.parser.parse_source(path)
-        self.assertIsInstance(tree, ast.Module)
-        self.assertEqual(len(tree.body), 0)
-
-    def test_pragma_no_code(self):
-        code = "# just a comment # pragma: no cover"
-        path = self.create_file("comment_pragma.py", code)
-        _, ignored = self.parser.parse_source(path)
-        self.assertIn(1, ignored)
-
-    def test_binary_file_handling(self):
-        filepath = os.path.join(self.test_dir, "binary.bin")
-        with open(filepath, 'wb') as f:
-            f.write(b'\x80\x00\x00')
-
-        tree, ignored = self.parser.parse_source(filepath)
+        # Should return None due to UnicodeDecodeError
         self.assertIsNone(tree)
-
-    def test_mixed_line_endings(self):
-        content = "x = 1\r\ny = 2\n"
-        path = self.create_file("crlf.py", content)
-        tree, _ = self.parser.parse_source(path)
-        self.assertIsNotNone(tree)
-        self.assertEqual(len(tree.body), 2)

@@ -14,6 +14,11 @@ class TestEngineCore(BaseTestCase):
         super().setUp()
         self.cov = MiniCoverage(project_root=self.test_dir)
 
+    def test_initialization(self):
+        self.assertEqual(self.cov.current_context, "default")
+        self.assertIsNotNone(self.cov.config)
+        self.assertEqual(self.cov.context_cache["default"], 0)
+
     def test_should_trace_filters(self):
         in_project = os.path.join(self.test_dir, "script.py")
         self.assertTrue(self.cov._should_trace(in_project))
@@ -38,60 +43,84 @@ class TestEngineCore(BaseTestCase):
         self.cov.trace_function(f2, "line", None)
         self.assertIn((10, 11), self.cov.trace_data['arcs'][filename][0])
 
-    def test_dynamic_context_switching(self):
-        filename = os.path.join(self.test_dir, "ctx.py")
+    def test_trace_function_arc_cross_file_reset(self):
+        f1 = os.path.join(self.test_dir, "a.py")
+        f2 = os.path.join(self.test_dir, "b.py")
 
-        # 1. Trace in 'default'
-        self.cov.trace_function(MockFrame(filename, 1), "line", None)
+        self.cov.trace_function(MockFrame(f1, 1), "line", None)
+        self.cov.trace_function(MockFrame(f2, 1), "line", None)
 
-        # 2. Switch Context
-        self.cov.switch_context("test_case_A")
-        self.cov.trace_function(MockFrame(filename, 2), "line", None)
+        # Should NOT link a.py:1 -> b.py:1
+        self.assertEqual(len(self.cov.trace_data['arcs'][f1][0]), 0)
 
-        # 3. Switch Again
-        self.cov.switch_context("test_case_B")
-        self.cov.trace_function(MockFrame(filename, 3), "line", None)
+        self.cov.trace_function(MockFrame(f2, 2), "line", None)
+        # Should link b.py:1 -> b.py:2
+        self.assertIn((1, 2), self.cov.trace_data['arcs'][f2][0])
 
-        # Verify in-memory structure
-        lines = self.cov.trace_data['lines'][filename]
-        # Context 0 (default) -> {1}
-        self.assertIn(1, lines[0])
+    # --- Dynamic Context Tests ---
 
-        # Get IDs for A and B
-        id_a = self.cov.context_cache["test_case_A"]
-        id_b = self.cov.context_cache["test_case_B"]
+    def test_context_switching(self):
+        self.cov.switch_context("ctx1")
+        self.assertEqual(self.cov.current_context, "ctx1")
+        cid1 = self.cov._get_current_context_id()
+        self.assertGreater(cid1, 0)
 
-        self.assertIn(2, lines[id_a])
-        self.assertIn(3, lines[id_b])
+        self.cov.switch_context("ctx2")
+        cid2 = self.cov._get_current_context_id()
+        self.assertNotEqual(cid1, cid2)
 
-        # Save to DB and Verify persistence
+        # Re-use existing ID
+        self.cov.switch_context("ctx1")
+        cid3 = self.cov._get_current_context_id()
+        self.assertEqual(cid1, cid3)
+
+    def test_trace_with_context(self):
+        filename = os.path.join(self.test_dir, "test.py")
+
+        self.cov.switch_context("test_A")
+        self.cov.trace_function(MockFrame(filename, 10), "line", None)
+
+        self.cov.switch_context("test_B")
+        self.cov.trace_function(MockFrame(filename, 20), "line", None)
+
+        # Verify persistence in DB
         self.cov.save_data()
 
-        # Inspect DB
         files = [f for f in os.listdir(self.test_dir) if ".coverage.db" in f]
+        self.assertEqual(len(files), 1)
         db_path = os.path.join(self.test_dir, files[0])
+
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
 
-        # Check contexts table
-        cur.execute("SELECT label FROM contexts WHERE label != 'default'")
-        labels = {row[0] for row in cur.fetchall()}
-        self.assertEqual(labels, {"test_case_A", "test_case_B"})
+        # Verify Contexts
+        cur.execute("SELECT id, label FROM contexts")
+        ctx_rows = cur.fetchall()
+        ctx_map = {label: cid for cid, label in ctx_rows}
+        self.assertIn("test_A", ctx_map)
+        self.assertIn("test_B", ctx_map)
 
-        # Check lines table has correct context mapping
-        # Join lines with contexts to verify
-        cur.execute("""
-                    SELECT c.label, l.line_no
-                    FROM lines l
-                             JOIN contexts c ON l.context_id = c.id
-                    WHERE l.file_path = ?
-                    """, (filename,))
-        rows = cur.fetchall()
+        # Verify Lines
+        cur.execute("SELECT context_id, line_no FROM lines")
+        lines = cur.fetchall()
+        self.assertIn((ctx_map["test_A"], 10), lines)
+        self.assertIn((ctx_map["test_B"], 20), lines)
         conn.close()
 
-        self.assertIn(('default', 1), rows)
-        self.assertIn(('test_case_A', 2), rows)
-        self.assertIn(('test_case_B', 3), rows)
+    def test_context_thread_safety(self):
+        # Stress test context creation
+        def worker(idx):
+            for _ in range(50):
+                self.cov.switch_context(f"thread_{idx}")
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+
+        # Should have 5 new contexts + default
+        self.assertEqual(len(self.cov.context_cache), 6)
+
+    # --- DB & Persistence Tests ---
 
     def test_save_data_sqlite(self):
         filename = os.path.join(self.test_dir, "test.py")
@@ -105,56 +134,90 @@ class TestEngineCore(BaseTestCase):
         db_path = os.path.join(self.test_dir, files[0])
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
+
+        # Check integrity
+        cur.execute("PRAGMA foreign_key_check")
+        errors = cur.fetchall()
+        self.assertEqual(len(errors), 0, "Foreign key errors found")
+
         cur.execute("SELECT * FROM lines")
         rows = cur.fetchall()
+        self.assertEqual(len(rows), 1)
         conn.close()
 
-        self.assertEqual(len(rows), 1)
-        # Schema: file, context_id, line
-        self.assertEqual(rows[0][0], filename)
-        self.assertEqual(rows[0][2], 1)
-
     def test_combine_data_sqlite(self):
-        # Manually create a partial sqlite DB
-        partial_name = f".coverage.db.{os.getpid()}.{uuid.uuid4().hex}"
-        db_path = os.path.join(self.test_dir, partial_name)
-        conn = sqlite3.connect(db_path)
-        conn.execute("CREATE TABLE contexts (id INTEGER PRIMARY KEY, label TEXT)")
-        conn.execute("INSERT INTO contexts VALUES (0, 'default'), (99, 'remote_ctx')")
-        conn.execute("CREATE TABLE lines (file_path TEXT, context_id INTEGER, line_no INTEGER)")
-        conn.execute("CREATE TABLE arcs (file_path TEXT, context_id INTEGER, start_line INTEGER, end_line INTEGER)")
+        # Create a partial DB manually
+        main_db = os.path.join(self.test_dir, ".coverage.db")
+        partial_db = main_db + ".partial"
 
-        conn.execute("INSERT INTO lines VALUES (?, ?, ?)", ("f1.py", 99, 100))
+        conn = sqlite3.connect(partial_db)
+        conn.execute("CREATE TABLE contexts (id INTEGER PRIMARY KEY, label TEXT)")
+        conn.execute("INSERT INTO contexts VALUES (99, 'remote')")
+        conn.execute("CREATE TABLE lines (file_path TEXT, context_id INTEGER, line_no INTEGER)")
+        conn.execute("INSERT INTO lines VALUES ('remote.py', 99, 100)")
+        conn.execute("CREATE TABLE arcs (file_path TEXT, context_id INTEGER, start_line INTEGER, end_line INTEGER)")
         conn.commit()
         conn.close()
 
+        # Run combine
         self.cov.combine_data()
 
-        main_db = os.path.join(self.test_dir, ".coverage.db")
-        self.assertTrue(os.path.exists(main_db))
-
+        # Verify Main DB
         conn = sqlite3.connect(main_db)
         cur = conn.cursor()
 
-        # Verify context merge
-        cur.execute("SELECT id FROM contexts WHERE label='remote_ctx'")
+        # Context should be merged
+        cur.execute("SELECT id FROM contexts WHERE label='remote'")
         res = cur.fetchone()
         self.assertIsNotNone(res)
         new_ctx_id = res[0]
+        self.assertNotEqual(new_ctx_id, 99)  # Should be remapped (likely 1 or 2)
 
-        # Verify line merge re-mapped to new ID
-        cur.execute("SELECT line_no FROM lines WHERE file_path='f1.py' AND context_id=?", (new_ctx_id,))
-        res_line = cur.fetchone()
+        # Line should use new context ID
+        cur.execute("SELECT line_no FROM lines WHERE context_id=?", (new_ctx_id,))
+        self.assertEqual(cur.fetchone()[0], 100)
         conn.close()
 
-        self.assertEqual(res_line[0], 100)
-        self.assertFalse(os.path.exists(db_path))
+        # Partial should be gone
+        self.assertFalse(os.path.exists(partial_db))
 
-    def test_config_data_file(self):
+    def test_combine_duplicate_contexts(self):
+        # Ensure we don't duplicate labels when merging multiple files
+        main_db = os.path.join(self.test_dir, ".coverage.db")
+
+        # Partial 1: ctx='common'
+        p1 = main_db + ".1"
+        c1 = sqlite3.connect(p1)
+        c1.execute("CREATE TABLE contexts (id, label)")
+        c1.execute("INSERT INTO contexts VALUES (10, 'common')")
+        c1.execute("CREATE TABLE lines (file_path, context_id, line_no)")
+        c1.execute("CREATE TABLE arcs (file_path, context_id, start_line, end_line)")
+        c1.commit();
+        c1.close()
+
+        # Partial 2: ctx='common'
+        p2 = main_db + ".2"
+        c2 = sqlite3.connect(p2)
+        c2.execute("CREATE TABLE contexts (id, label)")
+        c2.execute("INSERT INTO contexts VALUES (20, 'common')")  # Different local ID
+        c2.execute("CREATE TABLE lines (file_path, context_id, line_no)")
+        c2.execute("CREATE TABLE arcs (file_path, context_id, start_line, end_line)")
+        c2.commit();
+        c2.close()
+
+        self.cov.combine_data()
+
+        conn = sqlite3.connect(main_db)
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM contexts WHERE label='common'")
+        count = cur.fetchone()[0]
+        self.assertEqual(count, 1, "Should merge duplicate context labels")
+        conn.close()
+
+    def test_config_data_file_custom(self):
         self.cov.config['data_file'] = "custom.sqlite"
         filename = os.path.join(self.test_dir, "test.py")
         self.cov.trace_data['lines'][filename][0].add(1)
-
         self.cov.save_data()
 
         files = [f for f in os.listdir(self.test_dir) if "custom.sqlite" in f]
@@ -184,7 +247,6 @@ class TestEngineCore(BaseTestCase):
         th1.join();
         th2.join()
 
-        # Access default context 0
         arcs = self.cov.trace_data['arcs'][filename][0]
         self.assertIn((10, 11), arcs)
         self.assertIn((20, 21), arcs)

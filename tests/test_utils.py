@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import sys
 from contextlib import contextmanager
+import io
 
 class BaseTestCase(unittest.TestCase):
     """
@@ -16,7 +17,8 @@ class BaseTestCase(unittest.TestCase):
 
     def tearDown(self):
         os.chdir(self.old_cwd)
-        shutil.rmtree(self.test_dir)
+        # Fix: ignore_errors=True to prevent Windows file lock crashes
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def create_file(self, filename, content):
         """
@@ -54,5 +56,3 @@ class MockCode:
     def __init__(self, filename, name):
         self.co_filename = filename
         self.co_name = name
-
-import io

@@ -171,6 +171,12 @@ class BranchCoverage(CoverageMetric):
             if hasattr(node, 'finalbody') and isinstance(node.finalbody, list):
                 self._scan_body(node.finalbody, arcs, next_lineno, ignored_lines)
 
+            # FIXED: Recursively scan Exception Handlers
+            if hasattr(node, 'handlers') and isinstance(node.handlers, list):
+                for handler in node.handlers:
+                    if hasattr(handler, 'body'):
+                        self._scan_body(handler.body, arcs, next_lineno, ignored_lines)
+
 
 class ConditionCoverage(CoverageMetric):
     """
@@ -210,12 +216,10 @@ class ControlFlowGraph:
         self.leaders = self._find_leaders()
         self.blocks = self._build_blocks()
 
-        # 2. Build Edges (Graph connectivity)
         self.successors: Dict[int, Set[int]] = {b_start: set() for b_start, _ in self.blocks}
         self.predecessors: Dict[int, Set[int]] = {b_start: set() for b_start, _ in self.blocks}
         self._build_edges()
 
-        # 3. Compute Dominators
         self.dominators: Dict[int, Set[int]] = {}
         self._compute_dominators()
 

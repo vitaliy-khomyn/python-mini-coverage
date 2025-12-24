@@ -1,26 +1,36 @@
 import unittest
 import ast
-from src.metrics import StatementCoverage, BranchCoverage, ConditionCoverage
+import types
+import sys
+import dis
+from src.metrics import (
+    StatementCoverage,
+    BranchCoverage,
+    ConditionCoverage,
+    BytecodeControlFlow,
+    ControlFlowGraph
+)
 
 
 class TestMetricsBase(unittest.TestCase):
     def parse_code(self, code):
         return ast.parse(code)
 
+    def compile_code(self, code):
+        return compile(code, "<string>", "exec")
+
+
+# --- Statement Coverage Tests ---
 
 class TestStatementCoverage(TestMetricsBase):
     def setUp(self):
         self.metric = StatementCoverage()
 
     def test_simple_assignments(self):
-        code = """
-x = 1
-y = 2
-z = x + y
-"""
+        code = "x = 1\ny = 2\nz = x + y"
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
-        self.assertEqual(lines, {2, 3, 4})
+        self.assertEqual(lines, {1, 2, 3})
 
     def test_ignore_docstrings(self):
         code = """
@@ -33,7 +43,6 @@ y = 2
 """
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
-        # Line 2 and 4-6 are docstrings, should only have 3 and 7
         self.assertEqual(lines, {3, 7})
 
     def test_ignore_constants(self):
@@ -45,8 +54,6 @@ y = 2
 """
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
-        # Line 3 is a string constant. Line 4 is a number constant.
-        # Both should be ignored.
         self.assertEqual(lines, {2, 5})
 
     def test_pragma_ignore(self):
@@ -56,7 +63,6 @@ y = 2
 z = 3
 """
         tree = self.parse_code(code)
-        # Simulate pragma on line 3
         lines = self.metric.get_possible_elements(tree, {3})
         self.assertEqual(lines, {2, 4})
 
@@ -64,7 +70,6 @@ z = 3
         possible = {1, 2, 3, 4}
         executed = {1, 2}
         stats = self.metric.calculate_stats(possible, executed)
-
         self.assertEqual(stats['pct'], 50.0)
         self.assertEqual(stats['missing'], {3, 4})
         self.assertEqual(stats['executed'], {1, 2})
@@ -73,6 +78,50 @@ z = 3
         stats = self.metric.calculate_stats(set(), set())
         self.assertEqual(stats['pct'], 100.0)
 
+    def test_async_functions(self):
+        code = """
+async def fetch():
+    x = 1
+    await foo()
+"""
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        self.assertTrue({2, 3, 4}.issubset(lines))
+
+    def test_decorators(self):
+        code = """
+@decorator
+def func():
+    pass
+"""
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        # Decorator line and def line should be executable
+        self.assertTrue({2, 3}.issubset(lines) or {2}.issubset(lines))  # AST behavior varies slightly by version
+
+    def test_walrus_operator(self):
+        if sys.version_info < (3, 8): return
+        code = """
+if (x := 1) > 0:
+    y = 2
+"""
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        self.assertEqual(lines, {2, 3})
+
+    def test_annotated_assignments(self):
+        code = """
+x: int = 1
+y: str
+"""
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        # x: int = 1 is executable. y: str is purely annotation (variable annotation),
+        # usually not executable at runtime unless it's in a class body or module level evaluation.
+        self.assertIn(2, lines)
+
+
+# --- Branch Coverage Tests ---
 
 class TestBranchCoverage(TestMetricsBase):
     def setUp(self):
@@ -89,12 +138,8 @@ if x > 0:
     y = 1
 z = 2
 """
-        # Line 2: if
-        # Line 3: y=1 (True body)
-        # Line 4: z=2 (Implicit False / Fallthrough)
         arcs = self.get_arcs(code)
-        expected = {(2, 3), (2, 4)}
-        self.assertEqual(arcs, expected)
+        self.assertEqual(arcs, {(2, 3), (2, 4)})
 
     def test_if_else(self):
         code = """
@@ -104,7 +149,6 @@ else:
     y = 2
 z = 3
 """
-        # 2->3 (True), 2->5 (False)
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(2, 3), (2, 5)})
 
@@ -117,8 +161,6 @@ elif y:
 else:
     a = 3
 """
-        # if x: 2->3 (T), 2->4 (F -> elif)
-        # elif y: 4->5 (T), 4->7 (F -> else)
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(2, 3), (2, 4), (4, 5), (4, 7)})
 
@@ -130,8 +172,6 @@ if x:
     b = 2
 c = 3
 """
-        # Outer: 2->3 (T), 2->6 (F)
-        # Inner: 3->4 (T), 3->5 (F -> b=2)
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(2, 3), (2, 6), (3, 4), (3, 5)})
 
@@ -150,7 +190,6 @@ for i in range(3):
     print(i)
 print("done")
 """
-        # 2->3 (Enter), 2->4 (Exit)
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(2, 3), (2, 4)})
 
@@ -162,16 +201,11 @@ else:
     print("empty")
 end = 1
 """
-        # 2->3 (Enter)
-        # 2->5 (Exit/Else)
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(2, 3), (2, 5)})
 
     def test_match_case(self):
-        # Python 3.10+ syntax
-        if not hasattr(ast, 'Match'):
-            return
-
+        if not hasattr(ast, 'Match'): return
         code = """
 match x:
     case 1:
@@ -186,9 +220,7 @@ z = 4
         self.assertTrue({(2, 4), (2, 6), (2, 8)}.issubset(arcs))
 
     def test_match_no_wildcard(self):
-        if not hasattr(ast, 'Match'):
-            return
-
+        if not hasattr(ast, 'Match'): return
         code = """
 match x:
     case 1:
@@ -205,7 +237,6 @@ if x:
 else:
     y = 2
 """
-        # If line 2 is ignored, no arcs should come from it
         arcs = self.get_arcs(code, ignored={2})
         self.assertEqual(arcs, set())
 
@@ -216,8 +247,6 @@ def func():
         y = 1
 z = 2
 """
-        # Function def at 2. Body at 3.
-        # 'z=2' is at 5.
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(3, 4)})
 
@@ -231,6 +260,24 @@ for i in range(10):
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, {(2, 3), (3, 4), (3, 5)})
 
+    def test_try_except_finally_ast(self):
+        # Basic structural check, AST branch coverage doesn't deeply model exception jumps
+        code = """
+try:
+    if x:
+        a = 1
+except:
+    if y:
+        b = 2
+finally:
+    c = 3
+"""
+        arcs = self.get_arcs(code)
+        # Should find if x (3->4) and if y (6->7)
+        self.assertTrue({(3, 4), (6, 7)}.issubset(arcs))
+
+
+# --- Condition Coverage Tests ---
 
 class TestConditionCoverage(TestMetricsBase):
     def setUp(self):
@@ -250,17 +297,177 @@ class TestConditionCoverage(TestMetricsBase):
 
     def test_mixed_bool_ops(self):
         code = "res = (a or b) and c"
-        # AST: BoolOp(and, values=[BoolOp(or, values=[a, b]), c])
-        # We now use (lineno, col, type) so we should differentiate:
-        # 1. 'a' (Name)
-        # 2. 'b' (Name)
-        # 3. 'a or b' (BoolOp) - this is a value in the outer AND
-        # 4. 'c' (Name)
-        # Total = 4 distinct conditions
         conditions = self.get_conditions(code)
+        # 1. Outer AND (1st val: Group)
+        # 2. Outer AND (2nd val: c)
+        # 3. Inner OR (1st val: a)
+        # 4. Inner OR (2nd val: b)
         self.assertEqual(len(conditions), 4)
 
     def test_no_conditions(self):
         code = "x = 1"
         conditions = self.get_conditions(code)
         self.assertEqual(len(conditions), 0)
+
+    def test_multiline_conditions(self):
+        code = """
+if (a and
+    b):
+    pass
+"""
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+        lines = sorted([c[0] for c in conditions])
+        self.assertEqual(lines[0], 2)
+        self.assertEqual(lines[1], 3)
+
+
+# --- Control Flow Graph & Bytecode Tests ---
+
+class TestControlFlowGraph(TestMetricsBase):
+    def build_cfg(self, source_code):
+        co = self.compile_code(source_code)
+        return ControlFlowGraph(co)
+
+    def test_leaders_simple(self):
+        code = "x = 1\ny = 2\nprint(x)"
+        cfg = self.build_cfg(code)
+        self.assertIn(0, cfg.leaders)
+        self.assertEqual(len(cfg.blocks), 1)
+
+    def test_leaders_branching(self):
+        code = """
+if x:
+    y = 1
+else:
+    y = 2
+"""
+        cfg = self.build_cfg(code)
+        # Typically 3-4 blocks: Start, True, False, Join
+        self.assertGreaterEqual(len(cfg.blocks), 3)
+
+    def test_edges_if_else(self):
+        code = "if x: y=1\nelse: y=2\nz=3"
+        cfg = self.build_cfg(code)
+        start_succ = cfg.successors[0]
+        # Should diverge to 2 paths
+        self.assertEqual(len(start_succ), 2)
+
+    def test_edges_loop(self):
+        code = "for i in range(3): print(i)"
+        cfg = self.build_cfg(code)
+        has_back_edge = False
+        for src, targets in cfg.successors.items():
+            for t in targets:
+                if t <= src:
+                    has_back_edge = True
+        self.assertTrue(has_back_edge, "Loop should have back-edge")
+
+    def test_dominators_linear(self):
+        code = "x=1\ny=2"
+        cfg = self.build_cfg(code)
+        self.assertEqual(cfg.dominators[0], {0})
+
+    def test_dominators_diamond(self):
+        code = """
+if x:
+    a = 1
+else:
+    a = 2
+z = 3
+"""
+        cfg = self.build_cfg(code)
+        # Entry (0) dominates all
+        for node, doms in cfg.dominators.items():
+            self.assertIn(0, doms)
+
+        # Last block (join)
+        last_block_start = cfg.blocks[-1][0]
+        if last_block_start != 0:
+            self.assertIn(0, cfg.dominators[last_block_start])
+
+    def test_cfg_exception_handler(self):
+        code = """
+try:
+    x = 1 / 0
+except ZeroDivisionError:
+    y = 2
+"""
+        # Compiling this creates exception table entries in 3.11+
+        # or SETUP_FINALLY in older versions.
+        cfg = self.build_cfg(code)
+        # We expect a block for try, a block for except.
+        self.assertGreaterEqual(len(cfg.blocks), 2)
+
+    def test_cfg_with_return(self):
+        code = """
+def foo():
+    if x:
+        return 1
+    return 2
+"""
+        # We compile the body of foo
+        # This requires extracting the code object of 'foo', not the module
+        module_co = self.compile_code(code)
+        # Find the code object for foo
+        foo_co = None
+        for const in module_co.co_consts:
+            if isinstance(const, types.CodeType) and const.co_name == 'foo':
+                foo_co = const
+                break
+
+        self.assertIsNotNone(foo_co)
+        cfg = ControlFlowGraph(foo_co)
+        # Should identify return instructions as block terminators
+        # and leaders following them
+        self.assertGreater(len(cfg.blocks), 1)
+
+    def test_cfg_infinite_loop(self):
+        code = "while True: pass"
+        cfg = self.build_cfg(code)
+        # Should handle without crashing
+        self.assertGreater(len(cfg.successors), 0)
+
+
+class TestBytecodeMetric(TestMetricsBase):
+    def setUp(self):
+        self.metric = BytecodeControlFlow()
+
+    def test_jumps_identification(self):
+        code = """
+if x:
+    pass
+else:
+    pass
+"""
+        co = self.compile_code(code)
+        jumps = self.metric.get_possible_elements(co)
+        self.assertGreater(len(jumps), 0)
+        for item in jumps:
+            self.assertIsInstance(item, tuple)
+            self.assertEqual(len(item), 2)
+
+    def test_no_code_object(self):
+        self.assertEqual(self.metric.get_possible_elements(None), set())
+
+    def test_nested_functions_bytecode(self):
+        code = """
+def outer():
+    def inner():
+        if x: return 1
+    return inner
+"""
+        co = self.compile_code(code)
+        jumps = self.metric.get_possible_elements(co)
+        # Should recursively find jumps in inner()
+        self.assertGreater(len(jumps), 0)
+
+    def test_generator_bytecode(self):
+        code = """
+def gen():
+    for i in range(3):
+        yield i
+"""
+        co = self.compile_code(code)
+        jumps = self.metric.get_possible_elements(co)
+        self.assertGreater(len(jumps), 0)
