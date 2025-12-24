@@ -2,6 +2,7 @@ import unittest
 import os
 import json
 import sys
+import textwrap
 from src.engine import MiniCoverage
 from tests.test_utils import BaseTestCase
 
@@ -57,7 +58,14 @@ def debug_info():
     return "debug"
 """
         script_path = self.create_file("exclude.py", script)
-        self.create_file(".coveragerc", "[report]\nexclude_lines = def debug_info")
+
+        # Proper indentation for configparser multiline value
+        config = textwrap.dedent("""
+            [report]
+            exclude_lines =
+                def debug_info
+        """)
+        self.create_file(".coveragerc", config)
 
         cov = MiniCoverage(project_root=self.test_dir)
         with self.capture_stdout():
@@ -65,6 +73,7 @@ def debug_info():
 
         results = cov.analyze()
         file_res = results[script_path]['Statement']
+
         # Line 4 (def debug_info) should be removed from possible lines
         self.assertNotIn(4, file_res['possible'])
 

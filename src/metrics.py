@@ -171,7 +171,7 @@ class BranchCoverage(CoverageMetric):
             if hasattr(node, 'finalbody') and isinstance(node.finalbody, list):
                 self._scan_body(node.finalbody, arcs, next_lineno, ignored_lines)
 
-            # FIXED: Recursively scan Exception Handlers
+            # Recursively scan exception handlers
             if hasattr(node, 'handlers') and isinstance(node.handlers, list):
                 for handler in node.handlers:
                     if hasattr(handler, 'body'):
@@ -212,7 +212,6 @@ class ControlFlowGraph:
         self.instructions = list(dis.get_instructions(code))
         self.offset_to_instr_idx = {instr.offset: i for i, instr in enumerate(self.instructions)}
 
-        # 1. Identify Basic Blocks
         self.leaders = self._find_leaders()
         self.blocks = self._build_blocks()
 

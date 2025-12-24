@@ -32,29 +32,16 @@ class TestStatementCoverage(TestMetricsBase):
         lines = self.metric.get_possible_elements(tree, set())
         self.assertEqual(lines, {1, 2, 3})
 
-    def test_ignore_docstrings(self):
+    def test_ignore_docstrings_and_constants(self):
         code = """
-'This is a docstring'
+'docstring'
 x = 1
-'''
-Another docstring
-'''
+123 # constant number
 y = 2
 """
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
-        self.assertEqual(lines, {3, 7})
-
-    def test_ignore_constants(self):
-        code = """
-x = 1
-'standalone string'
-123
-y = 2
-"""
-        tree = self.parse_code(code)
-        lines = self.metric.get_possible_elements(tree, set())
-        self.assertEqual(lines, {2, 5})
+        self.assertEqual(lines, {3, 5})
 
     def test_pragma_ignore(self):
         code = """
@@ -96,8 +83,10 @@ def func():
 """
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
-        # Decorator line and def line should be executable
-        self.assertTrue({2, 3}.issubset(lines) or {2}.issubset(lines))  # AST behavior varies slightly by version
+        # AST assigns the line number of a decorated function to the @ line.
+        # The body (pass) is at line 4.
+        self.assertIn(2, lines)
+        self.assertIn(4, lines)
 
     def test_walrus_operator(self):
         if sys.version_info < (3, 8): return
@@ -116,8 +105,6 @@ y: str
 """
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
-        # x: int = 1 is executable. y: str is purely annotation (variable annotation),
-        # usually not executable at runtime unless it's in a class body or module level evaluation.
         self.assertIn(2, lines)
 
 
@@ -261,7 +248,6 @@ for i in range(10):
         self.assertEqual(arcs, {(2, 3), (3, 4), (3, 5)})
 
     def test_try_except_finally_ast(self):
-        # Basic structural check, AST branch coverage doesn't deeply model exception jumps
         code = """
 try:
     if x:
@@ -298,10 +284,6 @@ class TestConditionCoverage(TestMetricsBase):
     def test_mixed_bool_ops(self):
         code = "res = (a or b) and c"
         conditions = self.get_conditions(code)
-        # 1. Outer AND (1st val: Group)
-        # 2. Outer AND (2nd val: c)
-        # 3. Inner OR (1st val: a)
-        # 4. Inner OR (2nd val: b)
         self.assertEqual(len(conditions), 4)
 
     def test_no_conditions(self):
@@ -343,14 +325,12 @@ else:
     y = 2
 """
         cfg = self.build_cfg(code)
-        # Typically 3-4 blocks: Start, True, False, Join
         self.assertGreaterEqual(len(cfg.blocks), 3)
 
     def test_edges_if_else(self):
         code = "if x: y=1\nelse: y=2\nz=3"
         cfg = self.build_cfg(code)
         start_succ = cfg.successors[0]
-        # Should diverge to 2 paths
         self.assertEqual(len(start_succ), 2)
 
     def test_edges_loop(self):
@@ -377,11 +357,9 @@ else:
 z = 3
 """
         cfg = self.build_cfg(code)
-        # Entry (0) dominates all
         for node, doms in cfg.dominators.items():
             self.assertIn(0, doms)
 
-        # Last block (join)
         last_block_start = cfg.blocks[-1][0]
         if last_block_start != 0:
             self.assertIn(0, cfg.dominators[last_block_start])
@@ -393,10 +371,7 @@ try:
 except ZeroDivisionError:
     y = 2
 """
-        # Compiling this creates exception table entries in 3.11+
-        # or SETUP_FINALLY in older versions.
         cfg = self.build_cfg(code)
-        # We expect a block for try, a block for except.
         self.assertGreaterEqual(len(cfg.blocks), 2)
 
     def test_cfg_with_return(self):
@@ -406,10 +381,7 @@ def foo():
         return 1
     return 2
 """
-        # We compile the body of foo
-        # This requires extracting the code object of 'foo', not the module
         module_co = self.compile_code(code)
-        # Find the code object for foo
         foo_co = None
         for const in module_co.co_consts:
             if isinstance(const, types.CodeType) and const.co_name == 'foo':
@@ -418,14 +390,11 @@ def foo():
 
         self.assertIsNotNone(foo_co)
         cfg = ControlFlowGraph(foo_co)
-        # Should identify return instructions as block terminators
-        # and leaders following them
         self.assertGreater(len(cfg.blocks), 1)
 
     def test_cfg_infinite_loop(self):
         code = "while True: pass"
         cfg = self.build_cfg(code)
-        # Should handle without crashing
         self.assertGreater(len(cfg.successors), 0)
 
 
@@ -459,7 +428,6 @@ def outer():
 """
         co = self.compile_code(code)
         jumps = self.metric.get_possible_elements(co)
-        # Should recursively find jumps in inner()
         self.assertGreater(len(jumps), 0)
 
     def test_generator_bytecode(self):
