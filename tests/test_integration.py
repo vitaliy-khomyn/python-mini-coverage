@@ -2,7 +2,6 @@ import unittest
 import os
 import json
 import sys
-import textwrap
 from src.engine import MiniCoverage
 from tests.test_utils import BaseTestCase
 
@@ -57,13 +56,8 @@ def debug_info():
 """
         script_path = self.create_file("exclude.py", script)
 
-        # Proper formatting: no indentation for configparser top-level keys/sections
-        # 'exclude_lines' value is indented.
-        config = textwrap.dedent("""\
-[report]
-exclude_lines =
-    def debug_info
-""")
+        # Explicit newline formatting for configparser
+        config = "[report]\nexclude_lines =\n    def debug_info"
         self.create_file(".coveragerc", config)
 
         cov = MiniCoverage(project_root=self.test_dir)
@@ -73,6 +67,7 @@ exclude_lines =
         results = cov.analyze()
         file_res = results[script_path]['Statement']
 
+        # Line 4 (def debug_info) should be removed from possible lines
         self.assertNotIn(4, file_res['possible'])
 
     def test_cli_args_passing(self):

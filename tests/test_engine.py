@@ -50,9 +50,11 @@ class TestEngineCore(BaseTestCase):
         self.cov.trace_function(MockFrame(f1, 1), "line", None)
         self.cov.trace_function(MockFrame(f2, 1), "line", None)
 
+        # Should NOT link a.py:1 -> b.py:1
         self.assertEqual(len(self.cov.trace_data['arcs'][f1][0]), 0)
 
         self.cov.trace_function(MockFrame(f2, 2), "line", None)
+        # Should link b.py:1 -> b.py:2
         self.assertIn((1, 2), self.cov.trace_data['arcs'][f2][0])
 
     def test_context_switching(self):
@@ -125,48 +127,45 @@ class TestEngineCore(BaseTestCase):
 
     def test_combine_data_sqlite(self):
         main_db = os.path.join(self.test_dir, ".coverage.db")
-        # Ensure unique partial name to avoid glob mismatch
+        # Pattern logic: main_db + "." + pid + "." + uuid
         partial_db = f"{main_db}.123.{uuid.uuid4().hex}"
 
-        with closing(sqlite3.connect(partial_db)) as conn:
-            conn.execute("CREATE TABLE contexts (id INTEGER PRIMARY KEY, label TEXT)")
-            conn.execute("INSERT INTO contexts VALUES (99, 'remote')")
-            conn.execute("CREATE TABLE lines (file_path TEXT, context_id INTEGER, line_no INTEGER)")
-            conn.execute("INSERT INTO lines VALUES ('remote.py', 99, 100)")
-            conn.execute("CREATE TABLE arcs (file_path TEXT, context_id INTEGER, start_line INTEGER, end_line INTEGER)")
+        # Use the engine's own init method to ensure schema consistency (UNIQUE constraint etc)
+        with closing(self.cov._init_db(partial_db)) as conn:
+            conn.execute("INSERT OR IGNORE INTO contexts (id, label) VALUES (99, 'remote')")
+            conn.execute("INSERT INTO lines (file_path, context_id, line_no) VALUES ('remote.py', 99, 100)")
             conn.commit()
 
         self.cov.combine_data()
 
+        # Verify Main DB
         with closing(sqlite3.connect(main_db)) as conn:
             cur = conn.cursor()
             cur.execute("SELECT id FROM contexts WHERE label='remote'")
             res = cur.fetchone()
-            self.assertIsNotNone(res)
+            self.assertIsNotNone(res, "Context 'remote' not found in main DB")
             new_ctx_id = res[0]
 
             cur.execute("SELECT line_no FROM lines WHERE context_id=?", (new_ctx_id,))
-            self.assertEqual(cur.fetchone()[0], 100)
+            row = cur.fetchone()
+            self.assertIsNotNone(row, "Line data not found for merged context")
+            self.assertEqual(row[0], 100)
 
         self.assertFalse(os.path.exists(partial_db))
 
     def test_combine_duplicate_contexts(self):
         main_db = os.path.join(self.test_dir, ".coverage.db")
 
+        # Partial 1
         p1 = f"{main_db}.1.a"
-        with closing(sqlite3.connect(p1)) as c1:
-            c1.execute("CREATE TABLE contexts (id, label)")
-            c1.execute("INSERT INTO contexts VALUES (10, 'common')")
-            c1.execute("CREATE TABLE lines (file_path, context_id, line_no)")
-            c1.execute("CREATE TABLE arcs (file_path, context_id, start_line, end_line)")
+        with closing(self.cov._init_db(p1)) as c1:
+            c1.execute("INSERT OR IGNORE INTO contexts (id, label) VALUES (10, 'common')")
             c1.commit()
 
+        # Partial 2
         p2 = f"{main_db}.2.b"
-        with closing(sqlite3.connect(p2)) as c2:
-            c2.execute("CREATE TABLE contexts (id, label)")
-            c2.execute("INSERT INTO contexts VALUES (20, 'common')")
-            c2.execute("CREATE TABLE lines (file_path, context_id, line_no)")
-            c2.execute("CREATE TABLE arcs (file_path, context_id, start_line, end_line)")
+        with closing(self.cov._init_db(p2)) as c2:
+            c2.execute("INSERT OR IGNORE INTO contexts (id, label) VALUES (20, 'common')")
             c2.commit()
 
         self.cov.combine_data()
