@@ -79,39 +79,40 @@ class ConfigLoader:
         except configparser.Error as e:
             raise ValueError(f"INI parse error: {e}")
 
-        section: Optional[str] = None
+        # Check for existence of ANY relevant section
+        run_section: Optional[str] = None
         if parser.has_section('run'):
-            section = 'run'
+            run_section = 'run'
         elif parser.has_section('coverage:run'):
-            section = 'coverage:run'
+            run_section = 'coverage:run'
 
-        if not section:
-            return False
-
-        # Parse List Options
-        for key in ['omit', 'include', 'source']:
-            if parser.has_option(section, key):
-                val = parser.get(section, key)
-                config[key].update(self._parse_list(val))
-
-        # Parse Boolean Options
-        if parser.has_option(section, 'branch'):
-            config['branch'] = parser.getboolean(section, 'branch')
-
-        # Parse String Options
-        if parser.has_option(section, 'concurrency'):
-            config['concurrency'] = parser.get(section, 'concurrency').strip()
-
-        if parser.has_option(section, 'data_file'):
-            config['data_file'] = parser.get(section, 'data_file').strip()
-
-        # Parse Report Section for exclude_lines
-        report_section = None
+        report_section: Optional[str] = None
         if parser.has_section('report'):
             report_section = 'report'
         elif parser.has_section('coverage:report'):
             report_section = 'coverage:report'
 
+        # If neither section exists, this isn't a valid config file for us
+        if not run_section and not report_section:
+            return False
+
+        # Parse Run Section
+        if run_section:
+            for key in ['omit', 'include', 'source']:
+                if parser.has_option(run_section, key):
+                    val = parser.get(run_section, key)
+                    config[key].update(self._parse_list(val))
+
+            if parser.has_option(run_section, 'branch'):
+                config['branch'] = parser.getboolean(run_section, 'branch')
+
+            if parser.has_option(run_section, 'concurrency'):
+                config['concurrency'] = parser.get(run_section, 'concurrency').strip()
+
+            if parser.has_option(run_section, 'data_file'):
+                config['data_file'] = parser.get(run_section, 'data_file').strip()
+
+        # Parse Report Section
         if report_section and parser.has_option(report_section, 'exclude_lines'):
             val = parser.get(report_section, 'exclude_lines')
             config['exclude_lines'].update(self._parse_list(val))

@@ -37,10 +37,14 @@ class MiniCoverage:
         self.config_loader = ConfigLoader()
         self.config: Dict[str, Any] = self.config_loader.load_config(self.project_root, config_file)
 
-        # structure: {filename: {context_id: {lines}}}
+        # structure: {filename: {context_id: {data}}}
+        # 'lines': set(lineno)
+        # 'arcs': set((start, end))
+        # 'instruction_arcs': set((from_offset, to_offset)) -> New for MC/DC
         self.trace_data: Dict[str, Dict[Any, Any]] = {
             'lines': collections.defaultdict(lambda: collections.defaultdict(set)),
-            'arcs': collections.defaultdict(lambda: collections.defaultdict(set))
+            'arcs': collections.defaultdict(lambda: collections.defaultdict(set)),
+            'instruction_arcs': collections.defaultdict(lambda: collections.defaultdict(set))
         }
 
         self.current_context: str = "default"
@@ -106,7 +110,7 @@ class MiniCoverage:
         """
         Initialize the SQLite database schema.
 
-        Creates 'contexts', 'lines', and 'arcs' tables if they do not exist.
+        Creates 'contexts', 'lines', 'arcs', and 'instruction_arcs' tables.
         """
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
@@ -143,6 +147,17 @@ class MiniCoverage:
                         FOREIGN KEY (context_id) REFERENCES contexts (id)
                     )
                     """)
+        cur.execute("""
+                    CREATE TABLE IF NOT EXISTS instruction_arcs
+                    (
+                        file_path   TEXT,
+                        context_id  INTEGER,
+                        from_offset INTEGER,
+                        to_offset   INTEGER,
+                        PRIMARY KEY (file_path, context_id, from_offset, to_offset),
+                        FOREIGN KEY (context_id) REFERENCES contexts (id)
+                    )
+                    """)
         conn.commit()
         return conn
 
@@ -174,7 +189,6 @@ class MiniCoverage:
                 for cid, lines in ctx_map.items():
                     for line in lines:
                         line_data.append((file, cid, line))
-
             cur.executemany("INSERT OR IGNORE INTO lines (file_path, context_id, line_no) VALUES (?, ?, ?)", line_data)
 
             # batch insert arcs
@@ -183,10 +197,19 @@ class MiniCoverage:
                 for cid, arcs in ctx_map.items():
                     for start, end in arcs:
                         arc_data.append((file, cid, start, end))
-
             cur.executemany(
                 "INSERT OR IGNORE INTO arcs (file_path, context_id, start_line, end_line) VALUES (?, ?, ?, ?)",
                 arc_data)
+
+            # batch insert instruction arcs
+            instr_data = []
+            for file, ctx_map in self.trace_data['instruction_arcs'].items():
+                for cid, arcs in ctx_map.items():
+                    for start, end in arcs:
+                        instr_data.append((file, cid, start, end))
+            cur.executemany(
+                "INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, from_offset, to_offset) VALUES (?, ?, ?, ?)",
+                instr_data)
 
             conn.commit()
             conn.close()
@@ -234,6 +257,16 @@ class MiniCoverage:
                 """
                 cur.execute(sql_arcs)
 
+                # merge instruction arcs
+                sql_instr = f"""
+                INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, from_offset, to_offset)
+                SELECT a.file_path, main_c.id, a.from_offset, a.to_offset
+                FROM {alias}.instruction_arcs a
+                JOIN {alias}.contexts partial_c ON a.context_id = partial_c.id
+                JOIN contexts main_c ON partial_c.label = main_c.label
+                """
+                cur.execute(sql_instr)
+
                 conn.commit()
                 cur.execute(f"DETACH DATABASE {alias}")
                 os.remove(filename)
@@ -260,6 +293,10 @@ class MiniCoverage:
         cur.execute("SELECT file_path, start_line, end_line FROM arcs")
         for file, start, end in cur.fetchall():
             self.trace_data['arcs'][file][0].add((start, end))
+
+        cur.execute("SELECT file_path, from_offset, to_offset FROM instruction_arcs")
+        for file, start, end in cur.fetchall():
+            self.trace_data['instruction_arcs'][file][0].add((start, end))
 
     def _patch_multiprocessing(self) -> None:
         """
@@ -296,16 +333,19 @@ class MiniCoverage:
 
     def trace_function(self, frame: types.FrameType, event: str, arg: Any) -> Any:
         """
-        The main system trace callback.
+        The main system trace callback (Python fallback).
 
         Args:
             frame: The current stack frame.
             event: The trace event (e.g., 'line', 'call').
             arg: Dependent on event type (unused for 'line').
         """
-        # --- OLD PYTHON IMPLEMENTATION (Commented out for C Extension) ---
-        """
-        if event != 'line':
+        # Enable opcode tracing for this frame
+        if event == 'call':
+            frame.f_trace_opcodes = True
+            return self.trace_function
+
+        if event not in ('line', 'opcode'):
             return self.trace_function
 
         filename = frame.f_code.co_filename
@@ -314,62 +354,42 @@ class MiniCoverage:
             self._cache_traceable[filename] = self._should_trace(filename)
 
         if self._cache_traceable[filename]:
-            lineno = frame.f_lineno
             cid = self._get_current_context_id()
 
             if not hasattr(self.thread_local, 'last_line'):
                 self.thread_local.last_line = None
                 self.thread_local.last_file = None
+                self.thread_local.last_lasti = None
 
-            self.trace_data['lines'][filename][cid].add(lineno)
+            # 1. Line Trace
+            if event == 'line':
+                lineno = frame.f_lineno
+                self.trace_data['lines'][filename][cid].add(lineno)
 
-            last_file = self.thread_local.last_file
-            last_line = self.thread_local.last_line
+                last_file = self.thread_local.last_file
+                last_line = self.thread_local.last_line
 
-            if last_file == filename and last_line is not None:
-                self.trace_data['arcs'][filename][cid].add((last_line, lineno))
+                if last_file == filename and last_line is not None:
+                    self.trace_data['arcs'][filename][cid].add((last_line, lineno))
 
-            self.thread_local.last_line = lineno
+                self.thread_local.last_line = lineno
+                self.thread_local.last_file = filename
+
+            # 2. Opcode Trace (For MC/DC)
+            current_lasti = frame.f_lasti
+            last_lasti = self.thread_local.last_lasti
+
+            if last_lasti is not None and self.thread_local.last_file == filename:
+                self.trace_data['instruction_arcs'][filename][cid].add((last_lasti, current_lasti))
+
+            self.thread_local.last_lasti = current_lasti
             self.thread_local.last_file = filename
+
         else:
             if hasattr(self.thread_local, 'last_line'):
                 self.thread_local.last_line = None
                 self.thread_local.last_file = None
-
-        return self.trace_function
-        """
-        # Fallback if C extension is missing or manual call needed
-        # (Same logic as above but uncommented for fallback)
-        if event != 'line':
-            return self.trace_function
-
-        filename = frame.f_code.co_filename
-
-        if filename not in self._cache_traceable:
-            self._cache_traceable[filename] = self._should_trace(filename)
-
-        if self._cache_traceable[filename]:
-            lineno = frame.f_lineno
-            cid = self._get_current_context_id()
-
-            if not hasattr(self.thread_local, 'last_line'):
-                self.thread_local.last_line = None
-                self.thread_local.last_file = None
-
-            self.trace_data['lines'][filename][cid].add(lineno)
-
-            last_file = self.thread_local.last_file
-            last_line = self.thread_local.last_line
-
-            if last_file == filename and last_line is not None:
-                self.trace_data['arcs'][filename][cid].add((last_line, lineno))
-
-            self.thread_local.last_line = lineno
-            self.thread_local.last_file = filename
-        else:
-            if hasattr(self.thread_local, 'last_line'):
-                self.thread_local.last_line = None
-                self.thread_local.last_file = None
+                self.thread_local.last_lasti = None
 
         return self.trace_function
 
@@ -407,27 +427,26 @@ class MiniCoverage:
             if not ast_tree:
                 continue
 
-            code_obj = None
-            if any(m.get_name() == "Bytecode" for m in self.metrics):
-                code_obj = self.parser.compile_source(filename)
+            code_obj = self.parser.compile_source(filename)
 
             file_results = {}
             for metric in self.metrics:
                 possible = set()
-
-                if metric.get_name() == "Bytecode":
-                    possible = metric.get_possible_elements(code_obj, ignored_lines)  # type: ignore
-                else:
-                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
-
-                # flatten execution data from all contexts for general reporting
                 executed = set()
+
                 if metric.get_name() == "Statement":
+                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
                     for ctx_lines in self.trace_data['lines'][filename].values():
                         executed.update(ctx_lines)
-                elif metric.get_name() in ["Branch", "Bytecode"]:
+                elif metric.get_name() == "Branch":
+                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
                     for ctx_arcs in self.trace_data['arcs'][filename].values():
                         executed.update(ctx_arcs)
+                elif metric.get_name() == "Condition":
+                    # Condition Coverage needs Code Object + Instruction Arcs
+                    possible = metric.get_possible_elements(code_obj, ignored_lines)  # type: ignore
+                    for ctx_instr in self.trace_data['instruction_arcs'][filename].values():
+                        executed.update(ctx_instr)
 
                 stats = metric.calculate_stats(possible, executed)
                 file_results[metric.get_name()] = stats

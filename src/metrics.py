@@ -178,27 +178,6 @@ class BranchCoverage(CoverageMetric):
                         self._scan_body(handler.body, arcs, next_lineno, ignored_lines)
 
 
-class ConditionCoverage(CoverageMetric):
-    """
-    Identifies atomic Boolean Conditions for MCDC analysis.
-    """
-
-    def get_name(self) -> str:
-        return "Condition"
-
-    def get_possible_elements(self, ast_tree: ast.AST, ignored_lines: Set[int]) -> Set[Tuple[int, int, str]]:
-        conditions: Set[Tuple[int, int, str]] = set()
-        for node in ast.walk(ast_tree):
-            if hasattr(node, 'lineno') and node.lineno in ignored_lines:
-                continue
-
-            if isinstance(node, ast.BoolOp):
-                for value in node.values:
-                    if hasattr(value, 'lineno') and hasattr(value, 'col_offset'):
-                        conditions.add((value.lineno, value.col_offset, type(value).__name__))
-        return conditions
-
-
 class ControlFlowGraph:
     """
     A representation of the Control Flow Graph (CFG) for a Python Code Object.
@@ -380,3 +359,55 @@ class BytecodeControlFlow(CoverageMetric):
         for const in co.co_consts:
             if isinstance(const, types.CodeType):
                 self._analyze_code_object(const, jumps)
+
+
+class ConditionCoverage(CoverageMetric):
+    """
+    True MC/DC Implementation.
+    Identifies boolean jump instructions and verifies that both outcomes (True/False)
+    were executed at the bytecode level.
+    """
+
+    def get_name(self) -> str:
+        return "Condition"
+
+    def get_possible_elements(self, code_obj: Optional[types.CodeType], ignored_lines: Optional[Set[int]] = None) -> \
+    Set[Tuple[int, int]]:
+        """
+        Returns a set of expected arcs (from_offset, to_offset) specifically for BOOLEAN jumps.
+        This includes POP_JUMP_IF_FALSE, POP_JUMP_IF_TRUE, etc.
+        For each boolean jump, we expect TWO arcs: (offset, target) and (offset, next).
+        """
+        if not code_obj:
+            return set()
+
+        arcs: Set[Tuple[int, int]] = set()
+        self._analyze_boolean_jumps(code_obj, arcs)
+        return arcs
+
+    def _analyze_boolean_jumps(self, co: types.CodeType, arcs: Set[Tuple[int, int]]) -> None:
+        # We need instructions to find offsets
+        instructions = list(dis.get_instructions(co))
+
+        for i, instr in enumerate(instructions):
+            # Instructions relevant for Boolean logic (short-circuiting)
+            is_bool_jump = instr.opname in (
+                'POP_JUMP_IF_FALSE', 'POP_JUMP_IF_TRUE',
+                'JUMP_IF_FALSE_OR_POP', 'JUMP_IF_TRUE_OR_POP'
+            )
+
+            if is_bool_jump:
+                # 1. Target Arc (Jump Taken)
+                target = int(instr.argval)
+                arcs.add((instr.offset, target))
+
+                # 2. Fallthrough Arc (Jump Not Taken)
+                # Ensure we don't go out of bounds
+                if i + 1 < len(instructions):
+                    next_offset = instructions[i + 1].offset
+                    arcs.add((instr.offset, next_offset))
+
+        # Recurse
+        for const in co.co_consts:
+            if isinstance(const, types.CodeType):
+                self._analyze_boolean_jumps(const, arcs)

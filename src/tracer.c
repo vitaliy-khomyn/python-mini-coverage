@@ -1,41 +1,36 @@
 #include <Python.h>
 #include <frameobject.h>
 
-/* * Structure for the Tracer object.
- * Holds references to the engine and its key attributes to avoid repeated lookups.
- */
 typedef struct {
     PyObject_HEAD
-    PyObject *engine;          // The MiniCoverage instance
-    PyObject *trace_data_lines; // engine.trace_data['lines']
-    PyObject *trace_data_arcs;  // engine.trace_data['arcs']
-    PyObject *engine_thread_local; // engine.thread_local (Renamed to avoid C keyword conflict)
-    PyObject *cache_traceable;  // engine._cache_traceable
+    PyObject *engine;
+    PyObject *trace_data_lines;
+    PyObject *trace_data_arcs;
+    PyObject *trace_data_instr_arcs;
+    PyObject *engine_thread_local;
+    PyObject *cache_traceable;
 } Tracer;
 
-/*
- * Helper to get current context ID from engine.
- * Equivalent to: engine._get_current_context_id()
- */
-static PyObject*
-get_context_id(Tracer *self) {
+static PyObject* get_context_id(Tracer *self) {
     return PyObject_CallMethod(self->engine, "_get_current_context_id", NULL);
 }
 
-/*
- * The core trace logic.
- * Equivalent to MiniCoverage.trace_function
- */
-static int
-trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *arg) {
-    // 1. Only handle LINE events
-    if (what != PyTrace_LINE) {
+static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *arg) {
+
+    // 1. Handle CALL to enable opcodes
+    if (what == PyTrace_CALL) {
+        // frame.f_trace_opcodes = True
+        if (PyObject_SetAttrString((PyObject*)frame, "f_trace_opcodes", Py_True) < 0) {
+            return -1;
+        }
+        return 0;
+    }
+
+    if (what != PyTrace_LINE && what != PyTrace_OPCODE) {
         return 0;
     }
 
     // 2. Get Filename
-    // PyFrame_GetCode returns a new reference in 3.11+, but borrowing f_code is standard in C extensions for older versions.
-    // For safety across versions, we access the attribute.
     PyObject *code = PyObject_GetAttrString((PyObject*)frame, "f_code");
     if (!code) return -1;
 
@@ -43,16 +38,14 @@ trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *arg) {
     Py_DECREF(code);
     if (!filename) return -1;
 
-    // 3. Check Cache (_cache_traceable)
-    // if filename not in self._cache_traceable:
+    // 3. Check Cache
     int cached = PyDict_Contains(self->cache_traceable, filename);
-    if (cached == -1) { // Error
+    if (cached == -1) {
         Py_DECREF(filename);
         return -1;
     }
 
     if (cached == 0) {
-        // self._cache_traceable[filename] = self._should_trace(filename)
         PyObject *should = PyObject_CallMethod(self->engine, "_should_trace", "O", filename);
         if (!should) {
             Py_DECREF(filename);
@@ -66,100 +59,108 @@ trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *arg) {
         Py_DECREF(should);
     }
 
-    // Check if we should trace
-    PyObject *is_traceable = PyDict_GetItem(self->cache_traceable, filename); // Borrowed
+    PyObject *is_traceable = PyDict_GetItem(self->cache_traceable, filename);
     if (is_traceable != Py_True) {
         Py_DECREF(filename);
         return 0;
     }
 
-    // 4. Get Line Number
-    int lineno = PyFrame_GetLineNumber(frame);
-    PyObject *py_lineno = PyLong_FromLong(lineno);
-
-    // 5. Get Context ID
+    // 4. Get Context ID
     PyObject *cid = get_context_id(self);
     if (!cid) {
         Py_DECREF(filename);
-        Py_DECREF(py_lineno);
         return -1;
     }
 
-    // 6. Update Lines: self.trace_data['lines'][filename][cid].add(lineno)
-    // trace_data_lines is a defaultdict(defaultdict(set))
-    // Get file dict
-    PyObject *file_dict = PyObject_GetItem(self->trace_data_lines, filename); // New Ref
-    if (!file_dict) {
-        Py_DECREF(filename);
-        Py_DECREF(py_lineno);
-        Py_DECREF(cid);
-        return -1;
-    }
-
-    // Get context set
-    PyObject *lines_set = PyObject_GetItem(file_dict, cid); // New Ref
-    if (!lines_set) {
-        Py_DECREF(file_dict);
-        Py_DECREF(filename);
-        Py_DECREF(py_lineno);
-        Py_DECREF(cid);
-        return -1;
-    }
-
-    // Add line
-    PySet_Add(lines_set, py_lineno);
-    Py_DECREF(lines_set);
-    Py_DECREF(file_dict);
-
-    // 7. Update Arcs (Thread Local Logic)
-    // Using engine_thread_local instead of thread_local
+    // Initialize Thread Local if needed
     if (!PyObject_HasAttrString(self->engine_thread_local, "last_line")) {
         PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None);
         PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None);
+        PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None);
     }
 
-    // last_file = self.thread_local.last_file
-    // last_line = self.thread_local.last_line
-    PyObject *last_file = PyObject_GetAttrString(self->engine_thread_local, "last_file");
-    PyObject *last_line = PyObject_GetAttrString(self->engine_thread_local, "last_line");
+    // --- HANDLE LINE EVENT ---
+    if (what == PyTrace_LINE) {
+        int lineno = PyFrame_GetLineNumber(frame);
+        PyObject *py_lineno = PyLong_FromLong(lineno);
 
-    if (last_file && last_line && last_file != Py_None && last_line != Py_None) {
-        // if last_file == filename:
-        int cmp = PyObject_RichCompareBool(last_file, filename, Py_EQ);
-        if (cmp == 1) {
-            // self.trace_data['arcs'][filename][cid].add((last_line, lineno))
-            PyObject *file_arcs_dict = PyObject_GetItem(self->trace_data_arcs, filename);
-            if (file_arcs_dict) {
-                PyObject *arcs_set = PyObject_GetItem(file_arcs_dict, cid);
-                if (arcs_set) {
-                    PyObject *arc = PyTuple_Pack(2, last_line, py_lineno);
-                    PySet_Add(arcs_set, arc);
-                    Py_DECREF(arc);
-                    Py_DECREF(arcs_set);
+        // Update Lines
+        PyObject *file_dict = PyObject_GetItem(self->trace_data_lines, filename);
+        if (file_dict) {
+            PyObject *lines_set = PyObject_GetItem(file_dict, cid);
+            if (lines_set) {
+                PySet_Add(lines_set, py_lineno);
+                Py_DECREF(lines_set);
+            }
+            Py_DECREF(file_dict);
+        }
+
+        // Update Arcs
+        PyObject *last_file = PyObject_GetAttrString(self->engine_thread_local, "last_file");
+        PyObject *last_line = PyObject_GetAttrString(self->engine_thread_local, "last_line");
+
+        if (last_file && last_line && last_file != Py_None && last_line != Py_None) {
+            int cmp = PyObject_RichCompareBool(last_file, filename, Py_EQ);
+            if (cmp == 1) {
+                PyObject *file_arcs_dict = PyObject_GetItem(self->trace_data_arcs, filename);
+                if (file_arcs_dict) {
+                    PyObject *arcs_set = PyObject_GetItem(file_arcs_dict, cid);
+                    if (arcs_set) {
+                        PyObject *arc = PyTuple_Pack(2, last_line, py_lineno);
+                        PySet_Add(arcs_set, arc);
+                        Py_DECREF(arc);
+                        Py_DECREF(arcs_set);
+                    }
+                    Py_DECREF(file_arcs_dict);
                 }
-                Py_DECREF(file_arcs_dict);
+            }
+        }
+        Py_XDECREF(last_file);
+        Py_XDECREF(last_line);
+
+        PyObject_SetAttrString(self->engine_thread_local, "last_line", py_lineno);
+        PyObject_SetAttrString(self->engine_thread_local, "last_file", filename);
+        Py_DECREF(py_lineno);
+    }
+
+    // --- HANDLE OPCODE EVENT (MC/DC) ---
+    // Track instruction arcs: last_lasti -> current_lasti
+    int current_lasti_int = PyFrame_GetLasti(frame);
+    PyObject *current_lasti = PyLong_FromLong(current_lasti_int);
+
+    PyObject *last_lasti = PyObject_GetAttrString(self->engine_thread_local, "last_lasti");
+    PyObject *last_file_op = PyObject_GetAttrString(self->engine_thread_local, "last_file");
+
+    if (last_lasti && last_file_op && last_lasti != Py_None && last_file_op != Py_None) {
+        int cmp = PyObject_RichCompareBool(last_file_op, filename, Py_EQ);
+        if (cmp == 1) {
+            PyObject *file_instr_dict = PyObject_GetItem(self->trace_data_instr_arcs, filename);
+            if (file_instr_dict) {
+                PyObject *instr_set = PyObject_GetItem(file_instr_dict, cid);
+                if (instr_set) {
+                    PyObject *arc = PyTuple_Pack(2, last_lasti, current_lasti);
+                    PySet_Add(instr_set, arc);
+                    Py_DECREF(arc);
+                    Py_DECREF(instr_set);
+                }
+                Py_DECREF(file_instr_dict);
             }
         }
     }
-    Py_XDECREF(last_file);
-    Py_XDECREF(last_line);
+    Py_XDECREF(last_lasti);
+    Py_XDECREF(last_file_op);
 
-    // self.thread_local.last_line = lineno
-    // self.thread_local.last_file = filename
-    PyObject_SetAttrString(self->engine_thread_local, "last_line", py_lineno);
+    // Update state
+    PyObject_SetAttrString(self->engine_thread_local, "last_lasti", current_lasti);
     PyObject_SetAttrString(self->engine_thread_local, "last_file", filename);
 
-    Py_DECREF(py_lineno);
+    Py_DECREF(current_lasti);
     Py_DECREF(cid);
     Py_DECREF(filename);
 
     return 0;
 }
 
-/*
- * __call__ implementation makes the instance callable.
- * trace(frame, event, arg)
- */
 static PyObject *
 Tracer_call(Tracer *self, PyObject *args) {
     PyObject *frame;
@@ -170,19 +171,18 @@ Tracer_call(Tracer *self, PyObject *args) {
         return NULL;
     }
 
-    // Check event type string
     const char *event_str = PyUnicode_AsUTF8(event);
     int what = -1;
     if (strcmp(event_str, "line") == 0) what = PyTrace_LINE;
     else if (strcmp(event_str, "call") == 0) what = PyTrace_CALL;
     else if (strcmp(event_str, "return") == 0) what = PyTrace_RETURN;
     else if (strcmp(event_str, "exception") == 0) what = PyTrace_EXCEPTION;
+    else if (strcmp(event_str, "opcode") == 0) what = PyTrace_OPCODE;
 
     if (trace_logic(self, (PyFrameObject*)frame, what, arg) < 0) {
         return NULL;
     }
 
-    // Must return self to continue tracing
     Py_INCREF(self);
     return (PyObject *)self;
 }
@@ -194,23 +194,21 @@ Tracer_init(Tracer *self, PyObject *args, PyObject *kwds) {
         return -1;
     }
 
-    // Store Engine
     Py_INCREF(engine);
     self->engine = engine;
 
-    // Cache dicts for speed
     PyObject *trace_data = PyObject_GetAttrString(engine, "trace_data");
     if (!trace_data) return -1;
 
     self->trace_data_lines = PyObject_GetItem(trace_data, PyUnicode_FromString("lines"));
     self->trace_data_arcs = PyObject_GetItem(trace_data, PyUnicode_FromString("arcs"));
+    self->trace_data_instr_arcs = PyObject_GetItem(trace_data, PyUnicode_FromString("instruction_arcs"));
     Py_DECREF(trace_data);
 
-    // Retrieve thread_local from engine, but store it as engine_thread_local
     self->engine_thread_local = PyObject_GetAttrString(engine, "thread_local");
     self->cache_traceable = PyObject_GetAttrString(engine, "_cache_traceable");
 
-    if (!self->trace_data_lines || !self->trace_data_arcs || !self->engine_thread_local || !self->cache_traceable) {
+    if (!self->trace_data_lines || !self->trace_data_arcs || !self->trace_data_instr_arcs || !self->engine_thread_local || !self->cache_traceable) {
         Py_XDECREF(self->engine);
         return -1;
     }
@@ -223,6 +221,7 @@ Tracer_dealloc(Tracer *self) {
     Py_XDECREF(self->engine);
     Py_XDECREF(self->trace_data_lines);
     Py_XDECREF(self->trace_data_arcs);
+    Py_XDECREF(self->trace_data_instr_arcs);
     Py_XDECREF(self->engine_thread_local);
     Py_XDECREF(self->cache_traceable);
     Py_TYPE(self)->tp_free((PyObject *)self);
