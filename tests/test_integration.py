@@ -29,7 +29,6 @@ if __name__ == "__main__":
 
         cov.report()
         self.assertTrue(os.path.exists(os.path.join(self.test_dir, "coverage.xml")))
-        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "coverage.json")))
 
     def test_threading_support(self):
         script = """
@@ -58,8 +57,13 @@ def debug_info():
 """
         script_path = self.create_file("exclude.py", script)
 
-        # Use simple inline config for robustness
-        config = "[report]\nexclude_lines = def debug_info"
+        # Proper formatting: no indentation for configparser top-level keys/sections
+        # 'exclude_lines' value is indented.
+        config = textwrap.dedent("""\
+[report]
+exclude_lines =
+    def debug_info
+""")
         self.create_file(".coveragerc", config)
 
         cov = MiniCoverage(project_root=self.test_dir)

@@ -32,6 +32,7 @@ class TestEngineCore(BaseTestCase):
         filename = os.path.join(self.test_dir, "test.py")
         frame = MockFrame(filename, 10)
         self.cov.trace_function(frame, "line", None)
+        # Default context is 0
         self.assertIn(10, self.cov.trace_data['lines'][filename][0])
 
     def test_trace_function_arc_capture_same_file(self):

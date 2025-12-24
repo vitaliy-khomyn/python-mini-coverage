@@ -10,10 +10,16 @@ import fnmatch
 import types
 from typing import Optional, List, Dict, Any, Set, Tuple
 
+# Try to import the C extension
+try:
+    import minicov_tracer
+except ImportError:
+    minicov_tracer = None
+
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
 from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage, BytecodeControlFlow
-from .reporters import BaseReporter, ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter
+from .reporters import ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter, BaseReporter
 
 
 class MiniCoverage:
@@ -46,7 +52,6 @@ class MiniCoverage:
         self.parser = SourceParser()
         self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage()]
 
-        # initialized reporters list (extensible)
         self.reporters: List[BaseReporter] = [
             ConsoleReporter(),
             HtmlReporter(output_dir="htmlcov"),
@@ -60,6 +65,16 @@ class MiniCoverage:
 
         self.pid: int = os.getpid()
         self.uuid: str = uuid.uuid4().hex[:6]
+
+        # Initialize C Tracer if available
+        self.c_tracer = None
+        if minicov_tracer:
+            try:
+                # The C tracer takes 'self' (the engine) to access trace_data and caches
+                self.c_tracer = minicov_tracer.Tracer(self)
+                print("[Info] Optimized C Tracer loaded.")
+            except Exception as e:
+                print(f"[Warning] Failed to initialize C Tracer: {e}")
 
     def switch_context(self, context_label: str) -> None:
         """
@@ -263,8 +278,12 @@ class MiniCoverage:
         class CoverageProcess(OriginalProcess):
             def run(self) -> None:
                 cov = MiniCoverage(project_root=project_root, config_file=config_file)
-                sys.settrace(cov.trace_function)
-                threading.settrace(cov.trace_function)
+
+                # Use C tracer if available
+                tracer = cov.c_tracer if cov.c_tracer else cov.trace_function
+
+                sys.settrace(tracer)
+                threading.settrace(tracer)
                 try:
                     super().run()
                 finally:
@@ -284,6 +303,43 @@ class MiniCoverage:
             event: The trace event (e.g., 'line', 'call').
             arg: Dependent on event type (unused for 'line').
         """
+        # --- OLD PYTHON IMPLEMENTATION (Commented out for C Extension) ---
+        """
+        if event != 'line':
+            return self.trace_function
+
+        filename = frame.f_code.co_filename
+
+        if filename not in self._cache_traceable:
+            self._cache_traceable[filename] = self._should_trace(filename)
+
+        if self._cache_traceable[filename]:
+            lineno = frame.f_lineno
+            cid = self._get_current_context_id()
+
+            if not hasattr(self.thread_local, 'last_line'):
+                self.thread_local.last_line = None
+                self.thread_local.last_file = None
+
+            self.trace_data['lines'][filename][cid].add(lineno)
+
+            last_file = self.thread_local.last_file
+            last_line = self.thread_local.last_line
+
+            if last_file == filename and last_line is not None:
+                self.trace_data['arcs'][filename][cid].add((last_line, lineno))
+
+            self.thread_local.last_line = lineno
+            self.thread_local.last_file = filename
+        else:
+            if hasattr(self.thread_local, 'last_line'):
+                self.thread_local.last_line = None
+                self.thread_local.last_file = None
+
+        return self.trace_function
+        """
+        # Fallback if C extension is missing or manual call needed
+        # (Same logic as above but uncommented for fallback)
         if event != 'line':
             return self.trace_function
 
@@ -403,8 +459,11 @@ class MiniCoverage:
 
             self._patch_multiprocessing()
 
-            sys.settrace(self.trace_function)
-            threading.settrace(self.trace_function)
+            # Use C tracer if available, else fallback to Python
+            tracer = self.c_tracer if self.c_tracer else self.trace_function
+
+            sys.settrace(tracer)
+            threading.settrace(tracer)
 
             exec_globals = {
                 '__name__': '__main__',
