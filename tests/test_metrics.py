@@ -83,9 +83,8 @@ def func():
 """
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
-        # AST assigns the line number of a decorated function to the @ line.
-        # The body (pass) is at line 4.
-        self.assertIn(2, lines)
+        # Function def is line 3. Body is line 4.
+        self.assertIn(3, lines)
         self.assertIn(4, lines)
 
     def test_walrus_operator(self):

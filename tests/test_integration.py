@@ -47,7 +47,6 @@ t.join()
 
         results = cov.analyze()
         stmt = results[script_path]['Statement']
-        # Line 4 (x=1+1) must be executed
         self.assertTrue(any(line == 4 for line in stmt['executed']))
 
     def test_configuration_exclusion(self):
@@ -59,12 +58,8 @@ def debug_info():
 """
         script_path = self.create_file("exclude.py", script)
 
-        # Proper indentation for configparser multiline value
-        config = textwrap.dedent("""
-            [report]
-            exclude_lines =
-                def debug_info
-        """)
+        # Use simple inline config for robustness
+        config = "[report]\nexclude_lines = def debug_info"
         self.create_file(".coveragerc", config)
 
         cov = MiniCoverage(project_root=self.test_dir)
@@ -74,7 +69,6 @@ def debug_info():
         results = cov.analyze()
         file_res = results[script_path]['Statement']
 
-        # Line 4 (def debug_info) should be removed from possible lines
         self.assertNotIn(4, file_res['possible'])
 
     def test_cli_args_passing(self):
@@ -89,5 +83,4 @@ if len(sys.argv) > 1 and sys.argv[1] == 'foo':
             cov.run(script_path, script_args=['foo'])
 
         results = cov.analyze()
-        # Line 4 (print yes) should be hit
         self.assertIn(4, results[script_path]['Statement']['executed'])

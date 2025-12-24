@@ -32,7 +32,6 @@ class TestEngineCore(BaseTestCase):
         filename = os.path.join(self.test_dir, "test.py")
         frame = MockFrame(filename, 10)
         self.cov.trace_function(frame, "line", None)
-        # Default context is 0
         self.assertIn(10, self.cov.trace_data['lines'][filename][0])
 
     def test_trace_function_arc_capture_same_file(self):
@@ -50,14 +49,10 @@ class TestEngineCore(BaseTestCase):
         self.cov.trace_function(MockFrame(f1, 1), "line", None)
         self.cov.trace_function(MockFrame(f2, 1), "line", None)
 
-        # Should NOT link a.py:1 -> b.py:1
         self.assertEqual(len(self.cov.trace_data['arcs'][f1][0]), 0)
 
         self.cov.trace_function(MockFrame(f2, 2), "line", None)
-        # Should link b.py:1 -> b.py:2
         self.assertIn((1, 2), self.cov.trace_data['arcs'][f2][0])
-
-    # --- Dynamic Context Tests ---
 
     def test_context_switching(self):
         self.cov.switch_context("ctx1")
@@ -69,7 +64,6 @@ class TestEngineCore(BaseTestCase):
         cid2 = self.cov._get_current_context_id()
         self.assertNotEqual(cid1, cid2)
 
-        # Re-use existing ID
         self.cov.switch_context("ctx1")
         cid3 = self.cov._get_current_context_id()
         self.assertEqual(cid1, cid3)
@@ -87,7 +81,7 @@ class TestEngineCore(BaseTestCase):
         db_path = os.path.join(self.test_dir, files[0])
 
         # Use context manager to ensure close
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             cur = conn.cursor()
             cur.execute("SELECT id, label FROM contexts")
             ctx_map = {label: cid for cid, label in cur.fetchall()}
@@ -98,7 +92,6 @@ class TestEngineCore(BaseTestCase):
             self.assertIn((ctx_map["test_A"], 10), lines)
 
     def test_context_thread_safety(self):
-        # Stress test context creation
         def worker(idx):
             for _ in range(50):
                 self.cov.switch_context(f"thread_{idx}")
@@ -107,10 +100,7 @@ class TestEngineCore(BaseTestCase):
         for t in threads: t.start()
         for t in threads: t.join()
 
-        # Should have 5 new contexts + default
         self.assertEqual(len(self.cov.context_cache), 6)
-
-    # --- DB & Persistence Tests ---
 
     def test_save_data_sqlite(self):
         filename = os.path.join(self.test_dir, "test.py")
@@ -122,10 +112,8 @@ class TestEngineCore(BaseTestCase):
         self.assertEqual(len(files), 1)
 
         db_path = os.path.join(self.test_dir, files[0])
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn:
             cur = conn.cursor()
-
-            # Check integrity
             cur.execute("PRAGMA foreign_key_check")
             errors = cur.fetchall()
             self.assertEqual(len(errors), 0, "Foreign key errors found")
@@ -137,11 +125,9 @@ class TestEngineCore(BaseTestCase):
     def test_combine_data_sqlite(self):
         main_db = os.path.join(self.test_dir, ".coverage.db")
         # Ensure unique partial name to avoid glob mismatch
-        # Pattern logic: main_db + "." + pid + "." + uuid
-        # We manually construct one that matches
         partial_db = f"{main_db}.123.{uuid.uuid4().hex}"
 
-        with sqlite3.connect(partial_db) as conn:
+        with closing(sqlite3.connect(partial_db)) as conn:
             conn.execute("CREATE TABLE contexts (id INTEGER PRIMARY KEY, label TEXT)")
             conn.execute("INSERT INTO contexts VALUES (99, 'remote')")
             conn.execute("CREATE TABLE lines (file_path TEXT, context_id INTEGER, line_no INTEGER)")
@@ -151,7 +137,7 @@ class TestEngineCore(BaseTestCase):
 
         self.cov.combine_data()
 
-        with sqlite3.connect(main_db) as conn:
+        with closing(sqlite3.connect(main_db)) as conn:
             cur = conn.cursor()
             cur.execute("SELECT id FROM contexts WHERE label='remote'")
             res = cur.fetchone()
@@ -166,9 +152,8 @@ class TestEngineCore(BaseTestCase):
     def test_combine_duplicate_contexts(self):
         main_db = os.path.join(self.test_dir, ".coverage.db")
 
-        # Filenames must match pattern .coverage.db.*.*
         p1 = f"{main_db}.1.a"
-        with sqlite3.connect(p1) as c1:
+        with closing(sqlite3.connect(p1)) as c1:
             c1.execute("CREATE TABLE contexts (id, label)")
             c1.execute("INSERT INTO contexts VALUES (10, 'common')")
             c1.execute("CREATE TABLE lines (file_path, context_id, line_no)")
@@ -176,7 +161,7 @@ class TestEngineCore(BaseTestCase):
             c1.commit()
 
         p2 = f"{main_db}.2.b"
-        with sqlite3.connect(p2) as c2:
+        with closing(sqlite3.connect(p2)) as c2:
             c2.execute("CREATE TABLE contexts (id, label)")
             c2.execute("INSERT INTO contexts VALUES (20, 'common')")
             c2.execute("CREATE TABLE lines (file_path, context_id, line_no)")
@@ -185,7 +170,7 @@ class TestEngineCore(BaseTestCase):
 
         self.cov.combine_data()
 
-        with sqlite3.connect(main_db) as conn:
+        with closing(sqlite3.connect(main_db)) as conn:
             cur = conn.cursor()
             cur.execute("SELECT count(*) FROM contexts WHERE label='common'")
             count = cur.fetchone()[0]
