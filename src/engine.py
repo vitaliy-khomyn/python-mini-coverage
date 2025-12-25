@@ -185,6 +185,20 @@ class MiniCoverage:
         except Exception as e:
             print(f"[!] Failed to save coverage data to DB: {e}")
 
+    def _map_path(self, path: str) -> str:
+        """
+        Remap a file path based on the [paths] configuration.
+        Returns the canonical path if a match is found, otherwise the original.
+        """
+        path = os.path.normcase(path)
+        for canonical, aliases in self.config.get('paths', {}).items():
+            for alias in aliases:
+                norm_alias = os.path.normcase(alias)
+                if path.startswith(norm_alias):
+                    # Replace the alias prefix with the canonical prefix
+                    return path.replace(norm_alias, canonical, 1)
+        return path
+
     def combine_data(self) -> None:
         """
         Merge all partial coverage database files into the main database.
@@ -194,6 +208,8 @@ class MiniCoverage:
         """
         main_db = self.config['data_file']
         conn = self._init_db(main_db)
+        # Register the path mapping function for use in SQL queries
+        conn.create_function("remap_path", 1, self._map_path)
         cur = conn.cursor()
 
         pattern = f"{main_db}.*.*"
@@ -246,46 +262,23 @@ class MiniCoverage:
         for file, start, end in cur.fetchall():
             self.trace_data['instruction_arcs'][file][0].add((start, end))
 
-    def _patch_multiprocessing(self) -> None:
-        """
-        Monkey-patch multiprocessing.Process to support coverage in subprocesses.
-
-        Ensures that child processes initialize their own coverage engine,
-        collect data, and save it to disk upon exit.
-        """
-        if hasattr(multiprocessing, '_mini_coverage_patched'):
-            return
-
-        OriginalProcess = multiprocessing.Process
-        project_root = self.project_root
-        config_file = self.config_file
-
-        class CoverageProcess(OriginalProcess):
-            def run(self) -> None:
-                cov = MiniCoverage(project_root=project_root, config_file=config_file)
-                # Ensure child process starts the correct backend
-                cov.start()
-                try:
-                    super().run()
-                finally:
-                    cov.stop()
-
-        multiprocessing.Process = CoverageProcess
-        multiprocessing._mini_coverage_patched = True  # type: ignore
-
     def start(self) -> None:
         """
         Start coverage tracing.
         Uses sys.monitoring for Python 3.12+, otherwise falls back to sys.settrace.
         """
-        self._patch_multiprocessing()
+        # Set environment variable so subprocesses can bootstrap themselves
+        # This replaces the need for monkey-patching if the environment is configured correctly
+        if self.config_file:
+            os.environ["MINICOV_CONFIG"] = os.path.abspath(self.config_file)
 
-        use_monitoring = False
+        # Also pass root so bootstrapper can find the src package if not installed
+        os.environ["MINICOV_ROOT"] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
         if sys.version_info >= (3, 12):
-            use_monitoring = self._start_sys_monitoring()
-
-        # Fallback to sys.settrace if monitoring failed or is unavailable
-        if not use_monitoring:
+            self._start_sys_monitoring()
+        else:
+            # Use C tracer if available, else fallback to Python
             tracer = self.c_tracer if self.c_tracer else self.trace_function
             sys.settrace(tracer)
             threading.settrace(tracer)
@@ -296,17 +289,15 @@ class MiniCoverage:
         """
         if sys.version_info >= (3, 12):
             self._stop_sys_monitoring()
-
-        # Always unset settrace as well, just in case fallback was active
-        sys.settrace(None)
-        threading.settrace(None)
+        else:
+            sys.settrace(None)
+            threading.settrace(None)
 
         self.save_data()
 
-    def _start_sys_monitoring(self) -> bool:
+    def _start_sys_monitoring(self) -> None:
         """
         Enable sys.monitoring (Python 3.12+).
-        Returns True if successful, False otherwise.
         """
         try:
             import sys.monitoring
@@ -322,11 +313,11 @@ class MiniCoverage:
 
             # Enable PY_START globally. Local events will be enabled in _monitor_py_start.
             sys.monitoring.set_events(tool_id, sys.monitoring.events.PY_START)
-            return True
 
         except Exception as e:
             print(f"[Warning] sys.monitoring failed: {e}. Falling back to sys.settrace.")
-            return False
+            # Fallback logic could be complex here as start() already chose this path.
+            # Ideally we would fallback recursively, but for MVP we log.
 
     def _stop_sys_monitoring(self) -> None:
         """

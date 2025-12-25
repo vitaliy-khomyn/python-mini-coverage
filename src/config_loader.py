@@ -38,7 +38,8 @@ class ConfigLoader:
             'branch': False,
             'concurrency': 'thread',
             'exclude_lines': set(),
-            'data_file': '.coverage.db'
+            'data_file': '.coverage.db',
+            'paths': {}  # Map canonical_name -> [list of aliases]
         }
 
         # Check environment variables for overrides (highest precedence for file location)
@@ -92,8 +93,14 @@ class ConfigLoader:
         elif parser.has_section('coverage:report'):
             report_section = 'coverage:report'
 
+        paths_section: Optional[str] = None
+        if parser.has_section('paths'):
+            paths_section = 'paths'
+        elif parser.has_section('coverage:paths'):
+            paths_section = 'coverage:paths'
+
         # If neither section exists, this isn't a valid config file for us
-        if not run_section and not report_section:
+        if not run_section and not report_section and not paths_section:
             return False
 
         # Parse Run Section
@@ -117,6 +124,13 @@ class ConfigLoader:
             val = parser.get(report_section, 'exclude_lines')
             config['exclude_lines'].update(self._parse_list(val))
 
+        # Parse Paths Section
+        if paths_section:
+            for option in parser.options(paths_section):
+                val = parser.get(paths_section, option)
+                # Key is the canonical name, Value is list of paths
+                config['paths'][option] = list(self._parse_list(val))
+
         return True
 
     def _load_toml(self, path: str, config: Dict[str, Any]) -> None:
@@ -127,8 +141,9 @@ class ConfigLoader:
         tool = data.get('tool', {}).get('coverage', {})
         run = tool.get('run', {})
         report = tool.get('report', {})
+        paths = tool.get('paths', {})
 
-        if not run and not report:
+        if not run and not report and not paths:
             return
 
         # Run section
@@ -148,6 +163,11 @@ class ConfigLoader:
         # Report section
         if 'exclude_lines' in report:
             config['exclude_lines'].update(report['exclude_lines'])
+
+        # Paths section
+        if paths:
+            # TOML structure for paths is Key = [List]
+            config['paths'] = paths
 
     def _parse_list(self, raw_str: str) -> Set[str]:
         """Helper to parse multiline or comma-separated strings into a set."""

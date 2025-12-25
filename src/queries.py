@@ -51,9 +51,10 @@ INSERT_INSTRUCTION_ARC = "INSERT OR IGNORE INTO instruction_arcs (file_path, con
 # Dynamic queries (format strings)
 MERGE_CONTEXTS = "INSERT OR IGNORE INTO contexts (label) SELECT label FROM {alias}.contexts"
 
+# Updated to use remap_path function
 MERGE_LINES = """
     INSERT OR IGNORE INTO lines (file_path, context_id, line_no)
-    SELECT l.file_path, main_c.id, l.line_no
+    SELECT remap_path(l.file_path), main_c.id, l.line_no
     FROM {alias}.lines l
     JOIN {alias}.contexts partial_c ON l.context_id = partial_c.id
     JOIN contexts main_c ON partial_c.label = main_c.label
@@ -61,7 +62,7 @@ MERGE_LINES = """
 
 MERGE_ARCS = """
     INSERT OR IGNORE INTO arcs (file_path, context_id, start_line, end_line)
-    SELECT a.file_path, main_c.id, a.start_line, a.end_line
+    SELECT remap_path(a.file_path), main_c.id, a.start_line, a.end_line
     FROM {alias}.arcs a
     JOIN {alias}.contexts partial_c ON a.context_id = partial_c.id
     JOIN contexts main_c ON partial_c.label = main_c.label
@@ -69,7 +70,7 @@ MERGE_ARCS = """
 
 MERGE_INSTRUCTION_ARCS = """
     INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, from_offset, to_offset)
-    SELECT a.file_path, main_c.id, a.from_offset, a.to_offset
+    SELECT remap_path(a.file_path), main_c.id, a.from_offset, a.to_offset
     FROM {alias}.instruction_arcs a
     JOIN {alias}.contexts partial_c ON a.context_id = partial_c.id
     JOIN contexts main_c ON partial_c.label = main_c.label
