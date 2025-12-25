@@ -2,6 +2,7 @@ import os
 import html
 import collections
 from .base import BaseReporter, AnalysisResults, FileResults
+from . import templates
 
 
 class HtmlReporter(BaseReporter):
@@ -26,7 +27,7 @@ class HtmlReporter(BaseReporter):
         total_stmts = 0
         total_miss = 0
 
-        rows = []
+        rows = ""
         for filename in sorted(results.keys()):
             stmt = results[filename].get('Statement')
             if not stmt:
@@ -42,52 +43,19 @@ class HtmlReporter(BaseReporter):
             rel_name = os.path.relpath(filename, project_root)
             file_html_link = f"{self._sanitize_filename(rel_name)}.html"
 
-            rows.append(f"""
-            <tr>
-                <td><a href="{file_html_link}">{html.escape(rel_name)}</a></td>
-                <td>{possible}</td>
-                <td>{miss}</td>
-                <td>{pct:.0f}%</td>
-            </tr>
-            """)
+            rows += templates.render_index_row(
+                file_html_link,
+                html.escape(rel_name),
+                possible,
+                miss,
+                pct
+            )
 
         total_pct = 100.0
         if total_stmts > 0:
             total_pct = ((total_stmts - total_miss) / total_stmts) * 100
 
-        html_content = f"""
-        <html>
-        <head>
-            <title>Coverage Report</title>
-            <style>
-                body {{ font-family: sans-serif; padding: 20px; }}
-                table {{ border-collapse: collapse; width: 100%; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                th {{ background-color: #f2f2f2; }}
-                .header {{ margin-bottom: 20px; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>Coverage Report</h1>
-                <p>Total Coverage: <strong>{total_pct:.0f}%</strong></p>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>File</th>
-                        <th>Statements</th>
-                        <th>Missed</th>
-                        <th>Coverage</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {"".join(rows)}
-                </tbody>
-            </table>
-        </body>
-        </html>
-        """
+        html_content = templates.render_index(total_pct, rows)
 
         with open(os.path.join(self.output_dir, "index.html"), "w") as f:
             f.write(html_content)
@@ -115,7 +83,7 @@ class HtmlReporter(BaseReporter):
         except Exception:
             source_lines = ["Error reading source file."]
 
-        code_html = []
+        code_html = ""
         for i, line in enumerate(source_lines):
             lineno = i + 1
             css_class = ""
@@ -135,35 +103,9 @@ class HtmlReporter(BaseReporter):
                 annotation = f"<span class='annotate'>Missed branch to: {targets_str}</span>"
 
             line_content = html.escape(line.rstrip())
-            code_html.append(f"""
-            <div class="line {css_class}">
-                <span class="lineno">{lineno}</span>
-                <pre>{line_content}</pre>
-                {annotation}
-            </div>
-            """)
+            code_html += templates.render_code_line(lineno, line_content, css_class, annotation)
 
-        html_content = f"""
-        <html>
-        <head>
-            <title>{html.escape(rel_name)} - Coverage</title>
-            <style>
-                body {{ font-family: monospace; }}
-                .line {{ display: flex; }}
-                .lineno {{ width: 50px; color: #999; border-right: 1px solid #ddd; padding-right: 10px; margin-right: 10px; text-align: right; user-select: none; }}
-                pre {{ margin: 0; }}
-                .hit {{ background-color: #dff0d8; }}
-                .miss {{ background-color: #f2dede; }}
-                .partial {{ background-color: #fcf8e3; }}
-                .annotate {{ color: #a94442; font-size: 0.8em; margin-left: 20px; font-style: italic; }}
-            </style>
-        </head>
-        <body>
-            <h3>{html.escape(rel_name)}</h3>
-            {"".join(code_html)}
-        </body>
-        </html>
-        """
+        html_content = templates.render_file(html.escape(rel_name), code_html)
 
         with open(os.path.join(self.output_dir, out_name), "w") as f:
             f.write(html_content)

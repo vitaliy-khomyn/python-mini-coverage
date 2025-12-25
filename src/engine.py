@@ -16,6 +16,7 @@ try:
 except ImportError:
     minicov_tracer = None
 
+from . import queries
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
 from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage, BytecodeControlFlow
@@ -115,49 +116,12 @@ class MiniCoverage:
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
 
-        cur.execute("""
-                    CREATE TABLE IF NOT EXISTS contexts
-                    (
-                        id    INTEGER PRIMARY KEY,
-                        label TEXT UNIQUE
-                    )
-                    """)
+        cur.execute(queries.INIT_CONTEXTS)
+        cur.execute(queries.INIT_DEFAULT_CONTEXT)
+        cur.execute(queries.INIT_LINES)
+        cur.execute(queries.INIT_ARCS)
+        cur.execute(queries.INIT_INSTRUCTION_ARCS)
 
-        # insert default context if not exists
-        cur.execute("INSERT OR IGNORE INTO contexts (id, label) VALUES (0, 'default')")
-
-        cur.execute("""
-                    CREATE TABLE IF NOT EXISTS lines
-                    (
-                        file_path  TEXT,
-                        context_id INTEGER,
-                        line_no    INTEGER,
-                        PRIMARY KEY (file_path, context_id, line_no),
-                        FOREIGN KEY (context_id) REFERENCES contexts (id)
-                    )
-                    """)
-        cur.execute("""
-                    CREATE TABLE IF NOT EXISTS arcs
-                    (
-                        file_path  TEXT,
-                        context_id INTEGER,
-                        start_line INTEGER,
-                        end_line   INTEGER,
-                        PRIMARY KEY (file_path, context_id, start_line, end_line),
-                        FOREIGN KEY (context_id) REFERENCES contexts (id)
-                    )
-                    """)
-        cur.execute("""
-                    CREATE TABLE IF NOT EXISTS instruction_arcs
-                    (
-                        file_path   TEXT,
-                        context_id  INTEGER,
-                        from_offset INTEGER,
-                        to_offset   INTEGER,
-                        PRIMARY KEY (file_path, context_id, from_offset, to_offset),
-                        FOREIGN KEY (context_id) REFERENCES contexts (id)
-                    )
-                    """)
         conn.commit()
         return conn
 
@@ -181,7 +145,7 @@ class MiniCoverage:
 
             # sync contexts
             ctx_data = [(cid, label) for label, cid in self.context_cache.items()]
-            cur.executemany("INSERT OR IGNORE INTO contexts (id, label) VALUES (?, ?)", ctx_data)
+            cur.executemany(queries.INSERT_CONTEXT, ctx_data)
 
             # batch insert lines
             line_data = []
@@ -189,7 +153,7 @@ class MiniCoverage:
                 for cid, lines in ctx_map.items():
                     for line in lines:
                         line_data.append((file, cid, line))
-            cur.executemany("INSERT OR IGNORE INTO lines (file_path, context_id, line_no) VALUES (?, ?, ?)", line_data)
+            cur.executemany(queries.INSERT_LINE, line_data)
 
             # batch insert arcs
             arc_data = []
@@ -197,9 +161,7 @@ class MiniCoverage:
                 for cid, arcs in ctx_map.items():
                     for start, end in arcs:
                         arc_data.append((file, cid, start, end))
-            cur.executemany(
-                "INSERT OR IGNORE INTO arcs (file_path, context_id, start_line, end_line) VALUES (?, ?, ?, ?)",
-                arc_data)
+            cur.executemany(queries.INSERT_ARC, arc_data)
 
             # batch insert instruction arcs
             instr_data = []
@@ -207,9 +169,7 @@ class MiniCoverage:
                 for cid, arcs in ctx_map.items():
                     for start, end in arcs:
                         instr_data.append((file, cid, start, end))
-            cur.executemany(
-                "INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, from_offset, to_offset) VALUES (?, ?, ?, ?)",
-                instr_data)
+            cur.executemany(queries.INSERT_INSTRUCTION_ARC, instr_data)
 
             conn.commit()
             conn.close()
@@ -235,37 +195,16 @@ class MiniCoverage:
                 cur.execute(f"ATTACH DATABASE ? AS {alias}", (filename,))
 
                 # copy new contexts from partial, ignoring existing labels
-                cur.execute(f"INSERT OR IGNORE INTO contexts (label) SELECT label FROM {alias}.contexts")
+                cur.execute(queries.MERGE_CONTEXTS.format(alias=alias))
 
                 # merge lines (re-mapping IDs via join on label)
-                sql_lines = f"""
-                INSERT OR IGNORE INTO lines (file_path, context_id, line_no)
-                SELECT l.file_path, main_c.id, l.line_no
-                FROM {alias}.lines l
-                JOIN {alias}.contexts partial_c ON l.context_id = partial_c.id
-                JOIN contexts main_c ON partial_c.label = main_c.label
-                """
-                cur.execute(sql_lines)
+                cur.execute(queries.MERGE_LINES.format(alias=alias))
 
                 # merge arcs
-                sql_arcs = f"""
-                INSERT OR IGNORE INTO arcs (file_path, context_id, start_line, end_line)
-                SELECT a.file_path, main_c.id, a.start_line, a.end_line
-                FROM {alias}.arcs a
-                JOIN {alias}.contexts partial_c ON a.context_id = partial_c.id
-                JOIN contexts main_c ON partial_c.label = main_c.label
-                """
-                cur.execute(sql_arcs)
+                cur.execute(queries.MERGE_ARCS.format(alias=alias))
 
                 # merge instruction arcs
-                sql_instr = f"""
-                INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, from_offset, to_offset)
-                SELECT a.file_path, main_c.id, a.from_offset, a.to_offset
-                FROM {alias}.instruction_arcs a
-                JOIN {alias}.contexts partial_c ON a.context_id = partial_c.id
-                JOIN contexts main_c ON partial_c.label = main_c.label
-                """
-                cur.execute(sql_instr)
+                cur.execute(queries.MERGE_INSTRUCTION_ARCS.format(alias=alias))
 
                 conn.commit()
                 cur.execute(f"DETACH DATABASE {alias}")
@@ -286,15 +225,15 @@ class MiniCoverage:
         """
         cur = conn.cursor()
 
-        cur.execute("SELECT file_path, line_no FROM lines")
+        cur.execute(queries.SELECT_LINES)
         for file, line in cur.fetchall():
             self.trace_data['lines'][file][0].add(line)
 
-        cur.execute("SELECT file_path, start_line, end_line FROM arcs")
+        cur.execute(queries.SELECT_ARCS)
         for file, start, end in cur.fetchall():
             self.trace_data['arcs'][file][0].add((start, end))
 
-        cur.execute("SELECT file_path, from_offset, to_offset FROM instruction_arcs")
+        cur.execute(queries.SELECT_INSTRUCTION_ARCS)
         for file, start, end in cur.fetchall():
             self.trace_data['instruction_arcs'][file][0].add((start, end))
 
