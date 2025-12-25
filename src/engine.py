@@ -32,8 +32,16 @@ class MiniCoverage:
             project_root (str): The root directory to restrict tracing to.
             config_file (str): Optional path to a configuration file.
         """
-        self.project_root: str = os.path.abspath(project_root) if project_root else os.getcwd()
-        self.config_file: Optional[str] = config_file
+        cwd = os.getcwd()
+        if project_root:
+            self.project_root = os.path.abspath(project_root)
+        else:
+            self.project_root = os.path.abspath(cwd)
+
+        # Normalize for case-insensitive systems (Windows)
+        self.project_root = os.path.normcase(self.project_root)
+
+        self.config_file = config_file
 
         self.config_loader = ConfigLoader()
         self.config: Dict[str, Any] = self.config_loader.load_config(self.project_root, config_file)
@@ -65,7 +73,8 @@ class MiniCoverage:
         ]
 
         self._cache_traceable: Dict[str, bool] = {}
-        self.excluded_files: Set[str] = {os.path.abspath(__file__)}
+        # Ensure excluded files are also normalized
+        self.excluded_files: Set[str] = {os.path.normcase(os.path.abspath(__file__))}
         self.thread_local = threading.local()
 
         self.pid: int = os.getpid()
@@ -254,21 +263,139 @@ class MiniCoverage:
         class CoverageProcess(OriginalProcess):
             def run(self) -> None:
                 cov = MiniCoverage(project_root=project_root, config_file=config_file)
-
-                # Use C tracer if available
-                tracer = cov.c_tracer if cov.c_tracer else cov.trace_function
-
-                sys.settrace(tracer)
-                threading.settrace(tracer)
+                # Ensure child process starts the correct backend
+                cov.start()
                 try:
                     super().run()
                 finally:
-                    sys.settrace(None)
-                    threading.settrace(None)
-                    cov.save_data()
+                    cov.stop()
 
         multiprocessing.Process = CoverageProcess
         multiprocessing._mini_coverage_patched = True  # type: ignore
+
+    def start(self) -> None:
+        """
+        Start coverage tracing.
+        Uses sys.monitoring for Python 3.12+, otherwise falls back to sys.settrace.
+        """
+        self._patch_multiprocessing()
+
+        use_monitoring = False
+        if sys.version_info >= (3, 12):
+            use_monitoring = self._start_sys_monitoring()
+
+        # Fallback to sys.settrace if monitoring failed or is unavailable
+        if not use_monitoring:
+            tracer = self.c_tracer if self.c_tracer else self.trace_function
+            sys.settrace(tracer)
+            threading.settrace(tracer)
+
+    def stop(self) -> None:
+        """
+        Stop coverage tracing and save data to disk.
+        """
+        if sys.version_info >= (3, 12):
+            self._stop_sys_monitoring()
+
+        # Always unset settrace as well, just in case fallback was active
+        sys.settrace(None)
+        threading.settrace(None)
+
+        self.save_data()
+
+    def _start_sys_monitoring(self) -> bool:
+        """
+        Enable sys.monitoring (Python 3.12+).
+        Returns True if successful, False otherwise.
+        """
+        try:
+            import sys.monitoring
+
+            tool_id = sys.monitoring.COVERAGE_ID
+            sys.monitoring.use_tool_id(tool_id, "MiniCoverage")
+
+            # Register callbacks
+            # Monitor PY_START to filter files efficiently
+            sys.monitoring.register_callback(tool_id, sys.monitoring.events.PY_START, self._monitor_py_start)
+            sys.monitoring.register_callback(tool_id, sys.monitoring.events.LINE, self._monitor_line)
+            sys.monitoring.register_callback(tool_id, sys.monitoring.events.BRANCH, self._monitor_branch)
+
+            # Enable PY_START globally. Local events will be enabled in _monitor_py_start.
+            sys.monitoring.set_events(tool_id, sys.monitoring.events.PY_START)
+            return True
+
+        except Exception as e:
+            print(f"[Warning] sys.monitoring failed: {e}. Falling back to sys.settrace.")
+            return False
+
+    def _stop_sys_monitoring(self) -> None:
+        """
+        Disable sys.monitoring.
+        """
+        try:
+            import sys.monitoring
+            tool_id = sys.monitoring.COVERAGE_ID
+            sys.monitoring.set_events(tool_id, 0)
+            sys.monitoring.free_tool_id(tool_id)
+        except Exception:
+            pass
+
+    def _monitor_py_start(self, code: types.CodeType, instruction_offset: int) -> Any:
+        """
+        sys.monitoring callback for PY_START.
+        Determines if a code object should be traced.
+        """
+        filename = code.co_filename
+        # Normalize path for comparison (handling short/long/casing)
+        abs_filename = os.path.normcase(os.path.abspath(filename))
+
+        if filename not in self._cache_traceable:
+            self._cache_traceable[filename] = self._should_trace(abs_filename)
+
+        if self._cache_traceable[filename]:
+            import sys.monitoring
+            # Enable LINE and BRANCH events for this code object
+            sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code,
+                                            sys.monitoring.events.LINE | sys.monitoring.events.BRANCH)
+        else:
+            import sys.monitoring
+            sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code, 0)
+
+    def _monitor_line(self, code: types.CodeType, line_number: int) -> Any:
+        """
+        sys.monitoring callback for LINE events.
+        """
+        filename = code.co_filename
+        cid = self._get_current_context_id()
+
+        self.trace_data['lines'][filename][cid].add(line_number)
+
+        # Track line transitions (arcs) manually as sys.monitoring doesn't give 'last line'
+        # We rely on thread local storage
+        if not hasattr(self.thread_local, 'last_line'):
+            self.thread_local.last_line = None
+            self.thread_local.last_file = None
+
+        last_file = self.thread_local.last_file
+        last_line = self.thread_local.last_line
+
+        if last_file == filename and last_line is not None:
+            self.trace_data['arcs'][filename][cid].add((last_line, line_number))
+
+        self.thread_local.last_line = line_number
+        self.thread_local.last_file = filename
+
+        return None  # Keep event enabled
+
+    def _monitor_branch(self, code: types.CodeType, from_offset: int, to_offset: int) -> Any:
+        """
+        sys.monitoring callback for BRANCH events.
+        """
+        filename = code.co_filename
+        cid = self._get_current_context_id()
+
+        self.trace_data['instruction_arcs'][filename][cid].add((from_offset, to_offset))
+        return None
 
     def trace_function(self, frame: types.FrameType, event: str, arg: Any) -> Any:
         """
@@ -337,6 +464,9 @@ class MiniCoverage:
         Determine if a file should be tracked based on project root and exclusions.
         """
         abs_path = os.path.abspath(filename)
+        # Normalize for Windows to handle C:\ vs c:\
+        abs_path = os.path.normcase(abs_path)
+
         if not abs_path.startswith(self.project_root):
             return False
         if abs_path in self.excluded_files:
@@ -394,26 +524,6 @@ class MiniCoverage:
 
         return full_results
 
-    def start(self) -> None:
-        """
-        Start coverage tracing.
-        This enables the trace function for the current thread and all future threads.
-        """
-        self._patch_multiprocessing()
-
-        tracer = self.c_tracer if self.c_tracer else self.trace_function
-
-        sys.settrace(tracer)
-        threading.settrace(tracer)
-
-    def stop(self) -> None:
-        """
-        Stop coverage tracing and save data to disk.
-        """
-        sys.settrace(None)
-        threading.settrace(None)
-        self.save_data()
-
     def run(self, script_path: str, script_args: Optional[List[str]] = None) -> None:
         """
         Execute a target script under coverage tracking.
@@ -422,6 +532,7 @@ class MiniCoverage:
             script_path (str): Path to the script to execute.
             script_args (list): List of command-line arguments to pass to the script.
         """
+        # Normalize path for consistency
         abs_script_path = os.path.abspath(script_path)
         script_dir = os.path.dirname(abs_script_path)
 
