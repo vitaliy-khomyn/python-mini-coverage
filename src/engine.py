@@ -3,9 +3,6 @@ import os
 import collections
 import threading
 import multiprocessing
-import sqlite3
-import glob
-import uuid
 import fnmatch
 import types
 from typing import Optional, List, Dict, Any, Set, Tuple
@@ -16,11 +13,11 @@ try:
 except ImportError:
     minicov_tracer = None
 
-from . import queries
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
 from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage, BytecodeControlFlow
 from .reporters import ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter, BaseReporter
+from .storage import CoverageStorage
 
 
 class MiniCoverage:
@@ -63,6 +60,9 @@ class MiniCoverage:
         self._next_context_id: int = 1
         self._context_lock = threading.Lock()
 
+        # Initialize Storage Manager
+        self.storage = CoverageStorage(self.config['data_file'])
+
         self.parser = SourceParser()
         self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage()]
 
@@ -77,9 +77,6 @@ class MiniCoverage:
         # Ensure excluded files are also normalized
         self.excluded_files: Set[str] = {os.path.normcase(os.path.realpath(__file__))}
         self.thread_local = threading.local()
-
-        self.pid: int = os.getpid()
-        self.uuid: str = uuid.uuid4().hex[:6]
 
         # Initialize C Tracer if available
         self.c_tracer = None
@@ -117,74 +114,11 @@ class MiniCoverage:
         # optimization: fast lookup without lock if possible (GIL makes dict read atomic-ish)
         return self.context_cache.get(self.current_context, 0)
 
-    def _init_db(self, db_path: str) -> sqlite3.Connection:
-        """
-        Initialize the SQLite database schema.
-
-        Creates 'contexts', 'lines', 'arcs', and 'instruction_arcs' tables.
-        """
-        conn = sqlite3.connect(db_path)
-        cur = conn.cursor()
-
-        cur.execute(queries.INIT_CONTEXTS)
-        cur.execute(queries.INIT_DEFAULT_CONTEXT)
-        cur.execute(queries.INIT_LINES)
-        cur.execute(queries.INIT_ARCS)
-        cur.execute(queries.INIT_INSTRUCTION_ARCS)
-
-        conn.commit()
-        return conn
-
     def save_data(self) -> None:
         """
-        Dump the in-memory coverage data to a unique SQLite file.
-
-        This prevents locking contention by writing to a unique filename
-        based on PID and UUID.
+        Dump the in-memory coverage data to a unique SQLite file via Storage Manager.
         """
-        has_data = any(self.trace_data['lines'].values()) or any(self.trace_data['arcs'].values())
-        if not has_data:
-            return
-
-        base_name = self.config['data_file']
-        filename = f"{base_name}.{self.pid}.{self.uuid}"
-
-        try:
-            conn = self._init_db(filename)
-            cur = conn.cursor()
-
-            # sync contexts
-            ctx_data = [(cid, label) for label, cid in self.context_cache.items()]
-            cur.executemany(queries.INSERT_CONTEXT, ctx_data)
-
-            # batch insert lines
-            line_data = []
-            for file, ctx_map in self.trace_data['lines'].items():
-                for cid, lines in ctx_map.items():
-                    for line in lines:
-                        line_data.append((file, cid, line))
-            cur.executemany(queries.INSERT_LINE, line_data)
-
-            # batch insert arcs
-            arc_data = []
-            for file, ctx_map in self.trace_data['arcs'].items():
-                for cid, arcs in ctx_map.items():
-                    for start, end in arcs:
-                        arc_data.append((file, cid, start, end))
-            cur.executemany(queries.INSERT_ARC, arc_data)
-
-            # batch insert instruction arcs
-            instr_data = []
-            for file, ctx_map in self.trace_data['instruction_arcs'].items():
-                for cid, arcs in ctx_map.items():
-                    for start, end in arcs:
-                        instr_data.append((file, cid, start, end))
-            cur.executemany(queries.INSERT_INSTRUCTION_ARC, instr_data)
-
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"[!] Failed to save coverage data to DB: {e}")
+        self.storage.save(self.trace_data, self.context_cache)
 
     def _map_path(self, path: str) -> str:
         """
@@ -204,66 +138,12 @@ class MiniCoverage:
     def combine_data(self) -> None:
         """
         Merge all partial coverage database files into the main database.
-
-        Handles attaching partial databases, copying data with context ID
-        re-mapping via label matching, and cleaning up partial files.
         """
-        main_db = self.config['data_file']
-        conn = self._init_db(main_db)
-        # Register the path mapping function for use in SQL queries
-        conn.create_function("remap_path", 1, self._map_path)
-        cur = conn.cursor()
+        # Delegate merge logic to storage, passing the path mapping function
+        self.storage.combine(self._map_path)
 
-        pattern = f"{main_db}.*.*"
-
-        for filename in glob.glob(pattern):
-            try:
-                alias = f"partial_{uuid.uuid4().hex}"
-                cur.execute(f"ATTACH DATABASE ? AS {alias}", (filename,))
-
-                # copy new contexts from partial, ignoring existing labels
-                cur.execute(queries.MERGE_CONTEXTS.format(alias=alias))
-
-                # merge lines (re-mapping IDs via join on label)
-                cur.execute(queries.MERGE_LINES.format(alias=alias))
-
-                # merge arcs
-                cur.execute(queries.MERGE_ARCS.format(alias=alias))
-
-                # merge instruction arcs
-                cur.execute(queries.MERGE_INSTRUCTION_ARCS.format(alias=alias))
-
-                conn.commit()
-                cur.execute(f"DETACH DATABASE {alias}")
-                os.remove(filename)
-            except sqlite3.OperationalError:
-                # Can happen if file is locked or corrupt
-                pass
-            except Exception as e:
-                print(f"[!] Error combining {filename}: {e}")
-
-        self._load_from_db(conn)
-        conn.close()
-
-    def _load_from_db(self, conn: sqlite3.Connection) -> None:
-        """
-        Populate in-memory trace data from the database.
-
-        Currently flattens data into the default context for reporting purposes.
-        """
-        cur = conn.cursor()
-
-        cur.execute(queries.SELECT_LINES)
-        for file, line in cur.fetchall():
-            self.trace_data['lines'][file][0].add(line)
-
-        cur.execute(queries.SELECT_ARCS)
-        for file, start, end in cur.fetchall():
-            self.trace_data['arcs'][file][0].add((start, end))
-
-        cur.execute(queries.SELECT_INSTRUCTION_ARCS)
-        for file, start, end in cur.fetchall():
-            self.trace_data['instruction_arcs'][file][0].add((start, end))
+        # Load merged data back into memory for analysis/reporting
+        self.storage.load_into(self.trace_data)
 
     def _patch_multiprocessing(self) -> None:
         """
@@ -482,7 +362,7 @@ class MiniCoverage:
         """
         Determine if a file should be tracked based on project root and exclusions.
         """
-        # Ensure consistent path normalization (Canonical/Realpath)
+        # Use realpath to ensure consistent behavior across OS environments (canonical paths)
         # This matches how paths are treated in tests (test_utils uses realpath)
         # BUT we still use abspath in run() to preserve short paths if passed by user.
         # This function bridges the gap.
