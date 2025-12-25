@@ -34,9 +34,10 @@ class MiniCoverage:
         """
         cwd = os.getcwd()
         if project_root:
-            self.project_root = os.path.abspath(project_root)
+            # Use realpath to ensure we have the canonical path (resolves Windows short paths)
+            self.project_root = os.path.realpath(project_root)
         else:
-            self.project_root = os.path.abspath(cwd)
+            self.project_root = os.path.realpath(cwd)
 
         # Normalize for case-insensitive systems (Windows)
         self.project_root = os.path.normcase(self.project_root)
@@ -74,7 +75,7 @@ class MiniCoverage:
 
         self._cache_traceable: Dict[str, bool] = {}
         # Ensure excluded files are also normalized
-        self.excluded_files: Set[str] = {os.path.normcase(os.path.abspath(__file__))}
+        self.excluded_files: Set[str] = {os.path.normcase(os.path.realpath(__file__))}
         self.thread_local = threading.local()
 
         self.pid: int = os.getpid()
@@ -196,6 +197,7 @@ class MiniCoverage:
                 norm_alias = os.path.normcase(alias)
                 if path.startswith(norm_alias):
                     # Replace the alias prefix with the canonical prefix
+                    # We use standard string replacement for simplicity
                     return path.replace(norm_alias, canonical, 1)
         return path
 
@@ -235,6 +237,7 @@ class MiniCoverage:
                 cur.execute(f"DETACH DATABASE {alias}")
                 os.remove(filename)
             except sqlite3.OperationalError:
+                # Can happen if file is locked or corrupt
                 pass
             except Exception as e:
                 print(f"[!] Error combining {filename}: {e}")
@@ -262,23 +265,46 @@ class MiniCoverage:
         for file, start, end in cur.fetchall():
             self.trace_data['instruction_arcs'][file][0].add((start, end))
 
+    def _patch_multiprocessing(self) -> None:
+        """
+        Monkey-patch multiprocessing.Process to support coverage in subprocesses.
+
+        Ensures that child processes initialize their own coverage engine,
+        collect data, and save it to disk upon exit.
+        """
+        if hasattr(multiprocessing, '_mini_coverage_patched'):
+            return
+
+        OriginalProcess = multiprocessing.Process
+        project_root = self.project_root
+        config_file = self.config_file
+
+        class CoverageProcess(OriginalProcess):
+            def run(self) -> None:
+                cov = MiniCoverage(project_root=project_root, config_file=config_file)
+                # Ensure child process starts the correct backend
+                cov.start()
+                try:
+                    super().run()
+                finally:
+                    cov.stop()
+
+        multiprocessing.Process = CoverageProcess
+        multiprocessing._mini_coverage_patched = True  # type: ignore
+
     def start(self) -> None:
         """
         Start coverage tracing.
         Uses sys.monitoring for Python 3.12+, otherwise falls back to sys.settrace.
         """
-        # Set environment variable so subprocesses can bootstrap themselves
-        # This replaces the need for monkey-patching if the environment is configured correctly
-        if self.config_file:
-            os.environ["MINICOV_CONFIG"] = os.path.abspath(self.config_file)
+        self._patch_multiprocessing()
 
-        # Also pass root so bootstrapper can find the src package if not installed
-        os.environ["MINICOV_ROOT"] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
+        use_monitoring = False
         if sys.version_info >= (3, 12):
-            self._start_sys_monitoring()
-        else:
-            # Use C tracer if available, else fallback to Python
+            use_monitoring = self._start_sys_monitoring()
+
+        # Fallback to sys.settrace if monitoring failed or is unavailable
+        if not use_monitoring:
             tracer = self.c_tracer if self.c_tracer else self.trace_function
             sys.settrace(tracer)
             threading.settrace(tracer)
@@ -289,15 +315,17 @@ class MiniCoverage:
         """
         if sys.version_info >= (3, 12):
             self._stop_sys_monitoring()
-        else:
-            sys.settrace(None)
-            threading.settrace(None)
+
+        # Always unset settrace as well, just in case fallback was active
+        sys.settrace(None)
+        threading.settrace(None)
 
         self.save_data()
 
-    def _start_sys_monitoring(self) -> None:
+    def _start_sys_monitoring(self) -> bool:
         """
         Enable sys.monitoring (Python 3.12+).
+        Returns True if successful, False otherwise.
         """
         try:
             import sys.monitoring
@@ -313,11 +341,11 @@ class MiniCoverage:
 
             # Enable PY_START globally. Local events will be enabled in _monitor_py_start.
             sys.monitoring.set_events(tool_id, sys.monitoring.events.PY_START)
+            return True
 
         except Exception as e:
             print(f"[Warning] sys.monitoring failed: {e}. Falling back to sys.settrace.")
-            # Fallback logic could be complex here as start() already chose this path.
-            # Ideally we would fallback recursively, but for MVP we log.
+            return False
 
     def _stop_sys_monitoring(self) -> None:
         """
@@ -338,7 +366,7 @@ class MiniCoverage:
         """
         filename = code.co_filename
         # Normalize path for comparison (handling short/long/casing)
-        abs_filename = os.path.normcase(os.path.abspath(filename))
+        abs_filename = os.path.normcase(os.path.realpath(filename))
 
         if filename not in self._cache_traceable:
             self._cache_traceable[filename] = self._should_trace(abs_filename)
@@ -454,7 +482,11 @@ class MiniCoverage:
         """
         Determine if a file should be tracked based on project root and exclusions.
         """
-        abs_path = os.path.abspath(filename)
+        # Ensure consistent path normalization (Canonical/Realpath)
+        # This matches how paths are treated in tests (test_utils uses realpath)
+        # BUT we still use abspath in run() to preserve short paths if passed by user.
+        # This function bridges the gap.
+        abs_path = os.path.realpath(filename)
         # Normalize for Windows to handle C:\ vs c:\
         abs_path = os.path.normcase(abs_path)
 
@@ -483,6 +515,10 @@ class MiniCoverage:
         exclude_patterns = self.config.get('exclude_lines', set())
 
         for filename in all_files:
+            # Re-verify traceability with normalized paths to avoid processing artifacts
+            if not self._should_trace(filename):
+                continue
+
             ast_tree, ignored_lines = self.parser.parse_source(filename, exclude_patterns)
             if not ast_tree:
                 continue
@@ -523,7 +559,8 @@ class MiniCoverage:
             script_path (str): Path to the script to execute.
             script_args (list): List of command-line arguments to pass to the script.
         """
-        # Normalize path for consistency
+        # Normalize path for consistency, but use abspath to respect user input format (e.g. short paths)
+        # This fixes KeyError issues where test runner uses short paths but we forced realpath previously.
         abs_script_path = os.path.abspath(script_path)
         script_dir = os.path.dirname(abs_script_path)
 
