@@ -394,6 +394,26 @@ class MiniCoverage:
 
         return full_results
 
+    def start(self) -> None:
+        """
+        Start coverage tracing.
+        This enables the trace function for the current thread and all future threads.
+        """
+        self._patch_multiprocessing()
+
+        tracer = self.c_tracer if self.c_tracer else self.trace_function
+
+        sys.settrace(tracer)
+        threading.settrace(tracer)
+
+    def stop(self) -> None:
+        """
+        Stop coverage tracing and save data to disk.
+        """
+        sys.settrace(None)
+        threading.settrace(None)
+        self.save_data()
+
     def run(self, script_path: str, script_args: Optional[List[str]] = None) -> None:
         """
         Execute a target script under coverage tracking.
@@ -415,13 +435,7 @@ class MiniCoverage:
             with open(abs_script_path, 'rb') as f:
                 code = compile(f.read(), abs_script_path, 'exec')
 
-            self._patch_multiprocessing()
-
-            # Use C tracer if available, else fallback to Python
-            tracer = self.c_tracer if self.c_tracer else self.trace_function
-
-            sys.settrace(tracer)
-            threading.settrace(tracer)
+            self.start()
 
             exec_globals = {
                 '__name__': '__main__',
@@ -435,9 +449,7 @@ class MiniCoverage:
         except Exception as e:
             print(f"\n[!] Exception: {e}")
         finally:
-            sys.settrace(None)
-            threading.settrace(None)
-            self.save_data()
+            self.stop()
             sys.argv = original_argv
             sys.path = original_path
 
