@@ -32,6 +32,7 @@ HTML_FOOTER = """
 </html>
 """
 
+
 def render_index(total_pct: float, rows: str) -> str:
     """Render the main index page."""
     return f"""
@@ -56,6 +57,7 @@ def render_index(total_pct: float, rows: str) -> str:
     {HTML_FOOTER}
     """
 
+
 def render_file(filename: str, code_html: str) -> str:
     """Render a file coverage detail page."""
     return f"""
@@ -64,6 +66,7 @@ def render_file(filename: str, code_html: str) -> str:
     {code_html}
     {HTML_FOOTER}
     """
+
 
 def render_index_row(link: str, label: str, possible: int, missed: int, pct: float) -> str:
     """Render a single row in the index table."""
@@ -75,6 +78,7 @@ def render_index_row(link: str, label: str, possible: int, missed: int, pct: flo
         <td>{pct:.0f}%</td>
     </tr>
     """
+
 
 def render_code_line(lineno: int, content: str, css_class: str, annotation: str) -> str:
     """Render a single line of source code with highlights."""

@@ -1,7 +1,8 @@
+from abc import ABC
 from typing import Set, Dict, Any
 
 
-class CoverageMetric:
+class CoverageMetric(ABC):
     """
     Abstract base class for coverage measurement strategies.
     """

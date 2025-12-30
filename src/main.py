@@ -1,7 +1,6 @@
 import argparse
 import sys
 import os
-from typing import List
 
 from .engine import MiniCoverage
 
@@ -26,11 +25,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Initialize Engine (loads config internally)
+    # init engine (loads config internally)
     cov = MiniCoverage()
 
     if args.command == "run":
-        # Ensure the script path is absolute or correct relative to CWD
+        # ensure the script path is absolute or correct relatively to CWD
         script_path = args.script
         if not os.path.isfile(script_path):
             print(f"Error: Script '{script_path}' not found.")

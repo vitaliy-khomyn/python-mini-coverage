@@ -32,7 +32,7 @@ class ControlFlowGraph:
         leaders = {0}
 
         for i, instr in enumerate(self.instructions):
-            # Target of any jump is a leader
+            # target of any jump is a leader
             if instr.opcode in dis.hasjabs or instr.opcode in dis.hasjrel:
                 target = int(instr.argval)
                 leaders.add(target)

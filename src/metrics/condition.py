@@ -1,4 +1,3 @@
-import dis
 import types
 from typing import Set, Tuple, Optional
 from .base import CoverageMetric
@@ -15,8 +14,11 @@ class ConditionCoverage(CoverageMetric):
     def get_name(self) -> str:
         return "Condition"
 
-    def get_possible_elements(self, code_obj: Optional[types.CodeType], ignored_lines: Optional[Set[int]] = None) -> \
-    Set[Tuple[int, int]]:
+    def get_possible_elements(
+        self,
+        code_obj: Optional[types.CodeType],
+        ignored_lines: Optional[Set[int]] = None
+    ) -> Set[Tuple[int, int]]:
         """
         Returns a set of expected arcs (from_offset, to_offset) specifically for BOOLEAN jumps.
         This includes POP_JUMP_IF_FALSE, POP_JUMP_IF_TRUE, etc.
@@ -52,8 +54,8 @@ class ConditionCoverage(CoverageMetric):
                 target = int(instr.argval)
                 arcs.add((instr.offset, target))
 
-                # 2.fallthrough arc (Jump Not Taken)
-                # Ensure we don't go out of bounds
+                # 2. fallthrough arc (Jump Not Taken)
+                # ensure we don't go out of bounds
                 if i + 1 < len(cfg.instructions):
                     next_offset = cfg.instructions[i + 1].offset
                     arcs.add((instr.offset, next_offset))

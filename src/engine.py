@@ -5,9 +5,9 @@ import threading
 import multiprocessing
 import fnmatch
 import types
-from typing import Optional, List, Dict, Any, Set, Tuple
+from typing import Optional, List, Dict, Any, Set
 
-# Try to import the C extension
+# try to import the C extension
 try:
     import minicov_tracer
 except ImportError:
@@ -15,7 +15,7 @@ except ImportError:
 
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
-from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage, BytecodeControlFlow
+from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage
 from .reporters import ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter, BaseReporter
 from .storage import CoverageStorage
 
@@ -31,12 +31,12 @@ class MiniCoverage:
         """
         cwd = os.getcwd()
         if project_root:
-            # Use realpath to ensure we have the canonical path (resolves Windows short paths)
+            # use realpath to ensure having the canonical path (resolves symlinks and etc)
             self.project_root = os.path.realpath(project_root)
         else:
             self.project_root = os.path.realpath(cwd)
 
-        # Normalize for case-insensitive systems (Windows)
+        # normalize for case-insensitive systems (Windows)
         self.project_root = os.path.normcase(self.project_root)
 
         self.config_file = config_file
@@ -60,7 +60,7 @@ class MiniCoverage:
         self._next_context_id: int = 1
         self._context_lock = threading.Lock()
 
-        # Initialize Storage Manager
+        # initialize storage manager
         self.storage = CoverageStorage(self.config['data_file'])
 
         self.parser = SourceParser()
@@ -74,11 +74,11 @@ class MiniCoverage:
         ]
 
         self._cache_traceable: Dict[str, bool] = {}
-        # Ensure excluded files are also normalized
+        # ensure excluded files are also normalized
         self.excluded_files: Set[str] = {os.path.normcase(os.path.realpath(__file__))}
         self.thread_local = threading.local()
 
-        # Initialize C Tracer if available
+        # initialize C Tracer if available
         self.c_tracer = None
         if minicov_tracer:
             try:
@@ -162,7 +162,7 @@ class MiniCoverage:
         class CoverageProcess(OriginalProcess):
             def run(self) -> None:
                 cov = MiniCoverage(project_root=project_root, config_file=config_file)
-                # Ensure child process starts the correct backend
+                # ensure child process starts the correct backend
                 cov.start()
                 try:
                     super().run()
@@ -183,7 +183,7 @@ class MiniCoverage:
         if sys.version_info >= (3, 12):
             use_monitoring = self._start_sys_monitoring()
 
-        # Fallback to sys.settrace if monitoring failed or is unavailable
+        # fallback to sys.settrace if monitoring failed or is unavailable
         if not use_monitoring:
             tracer = self.c_tracer if self.c_tracer else self.trace_function
             sys.settrace(tracer)
@@ -196,7 +196,7 @@ class MiniCoverage:
         if sys.version_info >= (3, 12):
             self._stop_sys_monitoring()
 
-        # Always unset settrace as well, just in case fallback was active
+        # always unset settrace as well, just in case fallback was active
         sys.settrace(None)
         threading.settrace(None)
 
@@ -213,13 +213,13 @@ class MiniCoverage:
             tool_id = sys.monitoring.COVERAGE_ID
             sys.monitoring.use_tool_id(tool_id, "MiniCoverage")
 
-            # Register callbacks
-            # Monitor PY_START to filter files efficiently
+            # register callbacks
+            # monitor PY_START to filter files efficiently
             sys.monitoring.register_callback(tool_id, sys.monitoring.events.PY_START, self._monitor_py_start)
             sys.monitoring.register_callback(tool_id, sys.monitoring.events.LINE, self._monitor_line)
             sys.monitoring.register_callback(tool_id, sys.monitoring.events.BRANCH, self._monitor_branch)
 
-            # Enable PY_START globally. Local events will be enabled in _monitor_py_start.
+            # enable PY_START globally. Local events will be enabled in _monitor_py_start.
             sys.monitoring.set_events(tool_id, sys.monitoring.events.PY_START)
             return True
 
@@ -245,7 +245,7 @@ class MiniCoverage:
         Determines if a code object should be traced.
         """
         filename = code.co_filename
-        # Normalize path for comparison (handling short/long/casing)
+        # normalize path for comparison (handling short/long/casing)
         abs_filename = os.path.normcase(os.path.realpath(filename))
 
         if filename not in self._cache_traceable:
@@ -253,7 +253,7 @@ class MiniCoverage:
 
         if self._cache_traceable[filename]:
             import sys.monitoring
-            # Enable LINE and BRANCH events for this code object
+            # enable LINE and BRANCH events for this code object
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code,
                                             sys.monitoring.events.LINE | sys.monitoring.events.BRANCH)
         else:
@@ -269,8 +269,8 @@ class MiniCoverage:
 
         self.trace_data['lines'][filename][cid].add(line_number)
 
-        # Track line transitions (arcs) manually as sys.monitoring doesn't give 'last line'
-        # We rely on thread local storage
+        # track line transitions (arcs) manually as sys.monitoring doesn't give 'last line'
+        # thread local storage
         if not hasattr(self.thread_local, 'last_line'):
             self.thread_local.last_line = None
             self.thread_local.last_file = None
@@ -284,7 +284,7 @@ class MiniCoverage:
         self.thread_local.last_line = line_number
         self.thread_local.last_file = filename
 
-        return None  # Keep event enabled
+        return None  # keep event enabled
 
     def _monitor_branch(self, code: types.CodeType, from_offset: int, to_offset: int) -> Any:
         """
@@ -305,7 +305,7 @@ class MiniCoverage:
             event: The trace event (e.g., 'line', 'call').
             arg: Dependent on event type (unused for 'line').
         """
-        # Enable opcode tracing for this frame
+        # enable opcode tracing for this frame
         if event == 'call':
             frame.f_trace_opcodes = True
             return self.trace_function
@@ -326,7 +326,7 @@ class MiniCoverage:
                 self.thread_local.last_file = None
                 self.thread_local.last_lasti = None
 
-            # 1. Line Trace
+            # 1. line trace
             if event == 'line':
                 lineno = frame.f_lineno
                 self.trace_data['lines'][filename][cid].add(lineno)
@@ -340,7 +340,7 @@ class MiniCoverage:
                 self.thread_local.last_line = lineno
                 self.thread_local.last_file = filename
 
-            # 2. Opcode Trace (For MC/DC)
+            # 2. Opcode trace (for MC/DC)
             current_lasti = frame.f_lasti
             last_lasti = self.thread_local.last_lasti
 
@@ -367,7 +367,7 @@ class MiniCoverage:
         # BUT we still use abspath in run() to preserve short paths if passed by user.
         # This function bridges the gap.
         abs_path = os.path.realpath(filename)
-        # Normalize for Windows to handle C:\ vs c:\
+        # normalize for Windows to handle C:\ vs c:\
         abs_path = os.path.normcase(abs_path)
 
         if not abs_path.startswith(self.project_root):
@@ -395,7 +395,7 @@ class MiniCoverage:
         exclude_patterns = self.config.get('exclude_lines', set())
 
         for filename in all_files:
-            # Re-verify traceability with normalized paths to avoid processing artifacts
+            # re-verify traceability with normalized paths to avoid processing artifacts
             if not self._should_trace(filename):
                 continue
 

@@ -1,11 +1,13 @@
+from abc import ABC
 from typing import Dict, Any
 
-# Type aliases for clarity
+# type aliases for clarity
 CoverageStats = Dict[str, Any]
 FileResults = Dict[str, CoverageStats]
 AnalysisResults = Dict[str, FileResults]
 
-class BaseReporter:
+
+class BaseReporter(ABC):
     """
     Abstract base class for all coverage reporters.
     Enforces a consistent interface for the strategy pattern.

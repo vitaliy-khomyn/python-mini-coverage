@@ -3,6 +3,7 @@ from typing import Set, Tuple, Optional
 from .base import CoverageMetric
 from .cfg import ControlFlowGraph
 
+
 class BytecodeControlFlow(CoverageMetric):
     """
     Analyzes Python bytecode to determine control flow jumps.
@@ -20,7 +21,7 @@ class BytecodeControlFlow(CoverageMetric):
         return jumps
 
     def _analyze_code_object(self, co: types.CodeType, jumps: Set[Tuple[int, int]]) -> None:
-        # Build CFG for the current code object
+        # build CFG for the current code object
         cfg = ControlFlowGraph(co)
         jumps.update(cfg.get_jumps())
 

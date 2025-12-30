@@ -1,10 +1,9 @@
 import os
-import sys
 import logging
 import configparser
-from typing import Optional, Dict, Any, Set, List
+from typing import Optional, Dict, Any, Set
 
-# Try importing tomllib for pyproject.toml support (Python 3.11+)
+# try importing tomllib for pyproject.toml support (Python 3.11+)
 try:
     import tomllib
 except ImportError:
@@ -42,7 +41,7 @@ class ConfigLoader:
             'paths': {}  # Map canonical_name -> [list of aliases]
         }
 
-        # Check environment variables for overrides (highest precedence for file location)
+        # check environment variables for overrides (highest precedence for file location)
         env_data_file = os.environ.get('COVERAGE_FILE')
         if env_data_file:
             config['data_file'] = env_data_file
@@ -80,7 +79,7 @@ class ConfigLoader:
         except configparser.Error as e:
             raise ValueError(f"INI parse error: {e}")
 
-        # Check for existence of ANY relevant section
+        # check for existence of ANY relevant section
         run_section: Optional[str] = None
         if parser.has_section('run'):
             run_section = 'run'
@@ -99,11 +98,11 @@ class ConfigLoader:
         elif parser.has_section('coverage:paths'):
             paths_section = 'coverage:paths'
 
-        # If neither section exists, this isn't a valid config file for us
+        # if neither section exists, this isn't a valid config file for us
         if not run_section and not report_section and not paths_section:
             return False
 
-        # Parse Run Section
+        # parse run section
         if run_section:
             for key in ['omit', 'include', 'source']:
                 if parser.has_option(run_section, key):
@@ -119,12 +118,12 @@ class ConfigLoader:
             if parser.has_option(run_section, 'data_file'):
                 config['data_file'] = parser.get(run_section, 'data_file').strip()
 
-        # Parse Report Section
+        # parse report section
         if report_section and parser.has_option(report_section, 'exclude_lines'):
             val = parser.get(report_section, 'exclude_lines')
             config['exclude_lines'].update(self._parse_list(val))
 
-        # Parse Paths Section
+        # parse paths section
         if paths_section:
             for option in parser.options(paths_section):
                 val = parser.get(paths_section, option)
@@ -146,7 +145,7 @@ class ConfigLoader:
         if not run and not report and not paths:
             return
 
-        # Run section
+        # run section
         if 'omit' in run:
             config['omit'].update(run['omit'])
         if 'include' in run:
@@ -160,11 +159,11 @@ class ConfigLoader:
         if 'data_file' in run:
             config['data_file'] = str(run['data_file'])
 
-        # Report section
+        # report section
         if 'exclude_lines' in report:
             config['exclude_lines'].update(report['exclude_lines'])
 
-        # Paths section
+        # paths section
         if paths:
             # TOML structure for paths is Key = [List]
             config['paths'] = paths
@@ -172,7 +171,7 @@ class ConfigLoader:
     def _parse_list(self, raw_str: str) -> Set[str]:
         """Helper to parse multiline or comma-separated strings into a set."""
         result = set()
-        # Handle both newline and comma separators
+        # handle both newline and comma separators
         for line in raw_str.replace(',', '\n').splitlines():
             clean = line.strip()
             if clean:

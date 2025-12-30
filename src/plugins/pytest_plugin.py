@@ -14,16 +14,18 @@ def pytest_addoption(parser):
         help="Enable MiniCoverage measurement"
     )
 
+
 def pytest_configure(config):
     """
     Initialize the coverage engine if the flag is set.
     """
     global _cov_engine
     if config.getoption("--minicov"):
-        # We assume the project root is the pytest rootdir
+        # assume the project root is the pytest rootdir
         root = str(config.rootdir)
         _cov_engine = MiniCoverage(project_root=root)
         _cov_engine.start()
+
 
 def pytest_sessionfinish(session, exitstatus):
     """
@@ -32,10 +34,11 @@ def pytest_sessionfinish(session, exitstatus):
     global _cov_engine
     if _cov_engine:
         _cov_engine.stop()
-        # Optionally print a small summary or generate a report here
+        # optionally print a small summary or generate a report here
         # _cov_engine.report()
         print("\n[MiniCoverage] Data saved.")
         _cov_engine = None
+
 
 def pytest_runtest_setup(item):
     """
@@ -45,6 +48,7 @@ def pytest_runtest_setup(item):
     global _cov_engine
     if _cov_engine:
         _cov_engine.switch_context(item.nodeid)
+
 
 def pytest_runtest_teardown(item):
     """

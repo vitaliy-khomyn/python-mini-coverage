@@ -9,8 +9,11 @@ class SourceParser:
     Handles file I/O, AST generation, Bytecode compilation, and Pragma detection.
     """
 
-    def parse_source(self, filename: str, exclude_patterns: Optional[Iterable[str]] = None) -> Tuple[
-        Optional[ast.Module], Set[int]]:
+    def parse_source(
+        self,
+        filename: str,
+        exclude_patterns: Optional[Iterable[str]] = None
+    ) -> Tuple[Optional[ast.Module], Set[int]]:
         """
         Read a source file and parse it into an AST.
 
@@ -32,16 +35,16 @@ class SourceParser:
             source_text = "".join(source_lines)
             tree = ast.parse(source_text)
 
-            # Default pragma pattern
+            # default pragma pattern
             regexes = [re.compile(r'#.*pragma:\s*no\s*cover', re.IGNORECASE)]
 
-            # Add user-defined patterns
+            # add user-defined patterns
             if exclude_patterns:
                 for pat in exclude_patterns:
                     try:
                         regexes.append(re.compile(pat))
                     except re.error:
-                        pass  # Ignore invalid regex
+                        pass  # ignore invalid regex
 
             for i, line in enumerate(source_lines):
                 for regex in regexes:

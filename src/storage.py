@@ -2,7 +2,7 @@ import os
 import sqlite3
 import glob
 import uuid
-from typing import Dict, Any, Callable, List, Tuple
+from typing import Dict, Any, Callable
 from . import queries
 
 
@@ -14,7 +14,7 @@ class CoverageStorage:
 
     def __init__(self, data_file: str):
         self.data_file = data_file
-        # Unique identifier for this process's partial file
+        # unique identifier for this process's partial file
         self.pid = os.getpid()
         self.uuid = uuid.uuid4().hex[:6]
 
@@ -38,7 +38,7 @@ class CoverageStorage:
         """
         Dump in-memory coverage data to a unique SQLite file.
         """
-        # Check if there is any data to save
+        # check if there is any data to save
         has_data = any(trace_data['lines'].values()) or any(trace_data['arcs'].values())
         if not has_data:
             return
@@ -49,11 +49,11 @@ class CoverageStorage:
             conn = self._init_db(filename)
             cur = conn.cursor()
 
-            # Sync contexts
+            # sync contexts
             ctx_data = [(cid, label) for label, cid in context_cache.items()]
             cur.executemany(queries.INSERT_CONTEXT, ctx_data)
 
-            # Batch insert lines
+            # batch insert lines
             line_data = []
             for file, ctx_map in trace_data['lines'].items():
                 for cid, lines in ctx_map.items():
@@ -61,7 +61,7 @@ class CoverageStorage:
                         line_data.append((file, cid, line))
             cur.executemany(queries.INSERT_LINE, line_data)
 
-            # Batch insert arcs
+            # batch insert arcs
             arc_data = []
             for file, ctx_map in trace_data['arcs'].items():
                 for cid, arcs in ctx_map.items():
@@ -69,7 +69,7 @@ class CoverageStorage:
                         arc_data.append((file, cid, start, end))
             cur.executemany(queries.INSERT_ARC, arc_data)
 
-            # Batch insert instruction arcs
+            # batch insert instruction arcs
             instr_data = []
             for file, ctx_map in trace_data['instruction_arcs'].items():
                 for cid, arcs in ctx_map.items():
@@ -87,7 +87,7 @@ class CoverageStorage:
         Merge all partial coverage database files into the main database.
         """
         conn = self._init_db(self.data_file)
-        # Register the path mapping function for use in SQL queries
+        # register the path mapping function for use in SQL queries
         conn.create_function("remap_path", 1, map_path_func)
         cur = conn.cursor()
 
@@ -98,23 +98,23 @@ class CoverageStorage:
                 alias = f"partial_{uuid.uuid4().hex}"
                 cur.execute(f"ATTACH DATABASE ? AS {alias}", (filename,))
 
-                # Copy new contexts from partial, ignoring existing labels
+                # copy new contexts from partial, ignoring existing labels
                 cur.execute(queries.MERGE_CONTEXTS.format(alias=alias))
 
-                # Merge lines (re-mapping IDs via join on label)
+                # merge lines (re-mapping IDs via join on label)
                 cur.execute(queries.MERGE_LINES.format(alias=alias))
 
-                # Merge arcs
+                # merge arcs
                 cur.execute(queries.MERGE_ARCS.format(alias=alias))
 
-                # Merge instruction arcs
+                # merge instruction arcs
                 cur.execute(queries.MERGE_INSTRUCTION_ARCS.format(alias=alias))
 
                 conn.commit()
                 cur.execute(f"DETACH DATABASE {alias}")
                 os.remove(filename)
             except sqlite3.OperationalError:
-                # Can happen if file is locked or corrupt
+                # happens if file is locked or corrupt
                 pass
             except Exception as e:
                 print(f"[!] Error combining {filename}: {e}")
