@@ -17,7 +17,7 @@ static PyObject* get_context_id(Tracer *self) {
 
 static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *arg) {
 
-    // 1. Handle CALL to enable opcodes
+    // handle CALL to enable opcodes
     if (what == PyTrace_CALL) {
         // frame.f_trace_opcodes = True
         if (PyObject_SetAttrString((PyObject*)frame, "f_trace_opcodes", Py_True) < 0) {
@@ -30,7 +30,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         return 0;
     }
 
-    // 2. Get Filename
+    // get filename
     PyObject *code = PyObject_GetAttrString((PyObject*)frame, "f_code");
     if (!code) return -1;
 
@@ -38,7 +38,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
     Py_DECREF(code);
     if (!filename) return -1;
 
-    // 3. Check Cache
+    // cache check
     int cached = PyDict_Contains(self->cache_traceable, filename);
     if (cached == -1) {
         Py_DECREF(filename);
@@ -65,26 +65,26 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         return 0;
     }
 
-    // 4. Get Context ID
+    // get context ID
     PyObject *cid = get_context_id(self);
     if (!cid) {
         Py_DECREF(filename);
         return -1;
     }
 
-    // Initialize Thread Local if needed
+    // initialize thread local if needed
     if (!PyObject_HasAttrString(self->engine_thread_local, "last_line")) {
         PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None);
         PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None);
         PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None);
     }
 
-    // --- HANDLE LINE EVENT ---
+    // HANDLE LINE EVENT
     if (what == PyTrace_LINE) {
         int lineno = PyFrame_GetLineNumber(frame);
         PyObject *py_lineno = PyLong_FromLong(lineno);
 
-        // Update Lines
+        // update lines
         PyObject *file_dict = PyObject_GetItem(self->trace_data_lines, filename);
         if (file_dict) {
             PyObject *lines_set = PyObject_GetItem(file_dict, cid);
@@ -95,7 +95,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
             Py_DECREF(file_dict);
         }
 
-        // Update Arcs
+        // update arcs
         PyObject *last_file = PyObject_GetAttrString(self->engine_thread_local, "last_file");
         PyObject *last_line = PyObject_GetAttrString(self->engine_thread_local, "last_line");
 
@@ -123,8 +123,8 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         Py_DECREF(py_lineno);
     }
 
-    // --- HANDLE OPCODE EVENT (MC/DC) ---
-    // Track instruction arcs: last_lasti -> current_lasti
+    // HANDLE OPCODE EVENT (MC/DC)
+    // track instruction arcs: last_lasti -> current_lasti
     int current_lasti_int = PyFrame_GetLasti(frame);
     PyObject *current_lasti = PyLong_FromLong(current_lasti_int);
 
@@ -150,7 +150,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
     Py_XDECREF(last_lasti);
     Py_XDECREF(last_file_op);
 
-    // Update state
+    // update state
     PyObject_SetAttrString(self->engine_thread_local, "last_lasti", current_lasti);
     PyObject_SetAttrString(self->engine_thread_local, "last_file", filename);
 
@@ -200,9 +200,18 @@ Tracer_init(Tracer *self, PyObject *args, PyObject *kwds) {
     PyObject *trace_data = PyObject_GetAttrString(engine, "trace_data");
     if (!trace_data) return -1;
 
-    self->trace_data_lines = PyObject_GetItem(trace_data, PyUnicode_FromString("lines"));
-    self->trace_data_arcs = PyObject_GetItem(trace_data, PyUnicode_FromString("arcs"));
-    self->trace_data_instr_arcs = PyObject_GetItem(trace_data, PyUnicode_FromString("instruction_arcs"));
+    PyObject *key_lines = PyUnicode_FromString("lines");
+    self->trace_data_lines = PyObject_GetItem(trace_data, key_lines);
+    Py_DECREF(key_lines);
+
+    PyObject *key_arcs = PyUnicode_FromString("arcs");
+    self->trace_data_arcs = PyObject_GetItem(trace_data, key_arcs);
+    Py_DECREF(key_arcs);
+
+    PyObject *key_instr = PyUnicode_FromString("instruction_arcs");
+    self->trace_data_instr_arcs = PyObject_GetItem(trace_data, key_instr);
+    Py_DECREF(key_instr);
+
     Py_DECREF(trace_data);
 
     self->engine_thread_local = PyObject_GetAttrString(engine, "thread_local");
