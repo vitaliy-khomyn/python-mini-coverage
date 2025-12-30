@@ -37,16 +37,16 @@ class ControlFlowGraph:
                 target = int(instr.argval)
                 leaders.add(target)
 
-                # Instruction following a jump is a leader
+                # instruction following a jump is a leader
                 if i + 1 < len(self.instructions):
                     leaders.add(self.instructions[i + 1].offset)
 
-            # Instruction following a return/raise is a leader (unreachable or new block)
+            # instruction following a return/raise is a leader (unreachable or new block)
             if instr.opname in ('RETURN_VALUE', 'RAISE_VARARGS', 'RETURN_CONST'):
                 if i + 1 < len(self.instructions):
                     leaders.add(self.instructions[i + 1].offset)
 
-        # Exception Handlers are leaders (Python 3.11+)
+        # exception handlers are leaders (Python 3.11+)
         if sys.version_info >= (3, 11) and hasattr(self.code, 'co_exceptiontable'):
             try:
                 # dis.parse_exception_table returns (start, end, target, depth, lasti)
@@ -81,23 +81,28 @@ class ControlFlowGraph:
 
             targets = []
 
-            # 1. Jumps
+            # 1. jumps
             if end_instr.opcode in dis.hasjabs or end_instr.opcode in dis.hasjrel:
                 targets.append(int(end_instr.argval))
 
-            # 2. Fallthrough
-            # Falls through if not an unconditional flow breaker
+            # 2. fallthrough: unconditional flow breakers
             is_unconditional = end_instr.opname in (
-                'JUMP_ABSOLUTE', 'JUMP_FORWARD', 'RETURN_VALUE', 'RAISE_VARARGS', 'RETURN_CONST'
+                'JUMP_ABSOLUTE',
+                'JUMP_FORWARD',
+                'JUMP_BACKWARD',
+                'JUMP_BACKWARD_NO_INTERRUPT',
+                'RETURN_VALUE',
+                'RAISE_VARARGS',
+                'RETURN_CONST'
             )
-            # Conditional jumps (POP_JUMP_IF_FALSE etc) also fall through
+            # conditional jumps (POP_JUMP_IF_FALSE etc) also fall through
             if not is_unconditional:
                 if end_idx + 1 < len(self.instructions):
                     targets.append(self.instructions[end_idx + 1].offset)
 
-            # 3. Exception Edges (Simplified)
-            # In a real CFG, exceptions can occur at almost any instruction.
-            # Here we map them if we parsed leaders from the exception table.
+            # 3. exception Edges (simplified). TODO: exceptions cfg
+            # in a real CFG, exceptions can occur at almost any instruction
+            # here we map them if we parsed leaders from the exception table
 
             for t in targets:
                 # Ensure target is a valid block start (it should be if leaders logic is correct)
@@ -110,11 +115,11 @@ class ControlFlowGraph:
         Compute dominators for each block using a standard iterative algorithm.
         Dom(n) = {n} U (Intersection of Dom(p) for all p in pred(n))
         """
-        # Initialize
+        # initialize
         all_nodes = set(self.successors.keys())
         self.dominators = {node: all_nodes.copy() for node in all_nodes}
 
-        # Start node dominates itself
+        # start node dominates itself
         start_node = 0
         if start_node in self.dominators:
             self.dominators[start_node] = {start_node}
@@ -150,7 +155,7 @@ class ControlFlowGraph:
         for src, targets in self.successors.items():
             # src is the block start. We usually want the edge from the *end* instruction of the block
             # to the *start* instruction of the target block.
-            # Find the end instruction of the 'src' block
+            # find the end instruction of the 'src' block
             block_end = next(end for s, end in self.blocks if s == src)
 
             for t in targets:
