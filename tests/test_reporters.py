@@ -10,8 +10,13 @@ class TestReporters(BaseTestCase):
 
     def setUp(self):
         super().setUp()
+
+        self.filename = "main.py"
+        self.filepath = self.create_file(self.filename, "x=1\ny=2")
+        self.project_root = self.test_dir
+
         self.results = {
-            'main.py': {
+            self.filepath: {
                 'Statement': {
                     'pct': 50.0,
                     'missing': {2},
@@ -26,8 +31,6 @@ class TestReporters(BaseTestCase):
                 }
             }
         }
-        self.project_root = self.test_dir
-        self.create_file("main.py", "x=1\ny=2")
 
     def test_console_reporter_basic(self):
         reporter = ConsoleReporter()
@@ -40,8 +43,9 @@ class TestReporters(BaseTestCase):
         self.assertIn("Lines: 2", text)
 
     def test_console_reporter_no_branches(self):
-        res = {'f.py': {'Statement': {'pct': 100, 'missing': set(), 'executed': {1}, 'possible': {1}}}}
-        self.create_file("f.py", "pass")
+        f_path = self.create_file("f.py", "pass")
+        res = {f_path: {'Statement': {'pct': 100, 'missing': set(), 'executed': {1}, 'possible': {1}}}}
+
         reporter = ConsoleReporter()
         with self.capture_stdout() as output:
             reporter.generate(res, self.project_root)
@@ -56,7 +60,12 @@ class TestReporters(BaseTestCase):
             reporter.generate(self.results, self.project_root)
 
         self.assertTrue(os.path.exists(os.path.join(out_dir, "index.html")))
-        self.assertTrue(os.path.exists(os.path.join(out_dir, "main_py.html")))
+
+        rel_name = os.path.relpath(self.filepath, self.project_root)
+        sanitized_name = reporter._sanitize_filename(rel_name)
+        expected_html_file = f"{sanitized_name}.html"
+
+        self.assertTrue(os.path.exists(os.path.join(out_dir, expected_html_file)))
 
     def test_xml_reporter_structure(self):
         out_file = os.path.join(self.test_dir, "coverage.xml")
@@ -70,12 +79,12 @@ class TestReporters(BaseTestCase):
         self.assertEqual(root.tag, "coverage")
         self.assertEqual(root.attrib["line-rate"], "0.5")
 
-        # Check source
         source = root.find(".//sources/source")
         self.assertEqual(source.text, self.project_root)
 
-        # Check class stats
-        cls = root.find(".//class[@filename='main.py']")
+        rel_name = os.path.relpath(self.filepath, self.project_root)
+        # XML reporter uses filename attribute to match
+        cls = root.find(f".//class[@filename='{rel_name}']")
         self.assertIsNotNone(cls)
         self.assertEqual(cls.attrib["line-rate"], "0.5")
 
@@ -91,8 +100,10 @@ class TestReporters(BaseTestCase):
 
         self.assertIn("meta", data)
         self.assertEqual(data["meta"]["project_root"], self.project_root)
-        self.assertIn("main.py", data["files"])
-        self.assertEqual(data["files"]["main.py"]["Statement"]["missing"], [2])
+
+        rel_name = os.path.relpath(self.filepath, self.project_root)
+        self.assertIn(rel_name, data["files"])
+        self.assertEqual(data["files"][rel_name]["Statement"]["missing"], [2])
 
     def test_empty_results_handling(self):
         empty = {}
