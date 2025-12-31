@@ -1,8 +1,8 @@
 import os
-import sys
+import sys  # noqa: F401
 import logging
 import configparser
-from typing import Optional, Dict, Any, Set, List
+from typing import Optional, Dict, Any, Set
 
 # Try importing tomllib for pyproject.toml support (Python 3.11+)
 try:

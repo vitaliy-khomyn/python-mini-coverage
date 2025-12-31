@@ -1,6 +1,5 @@
 import unittest
 import os
-import sys
 from .mini_coverage import MiniCoverage
 
 
@@ -112,7 +111,7 @@ x = 1
 
         cov = MiniCoverage()
         # Use AST to check what it thinks are executable lines
-        executables = cov.get_executable_lines(script_path)
+        _ = cov.get_executable_lines(script_path)
 
         # Only 'x = 1' (line 6) should be executable.
         # (Sometimes docstrings are expressions, but standard AST logic usually filters pure string expressions if handled right,

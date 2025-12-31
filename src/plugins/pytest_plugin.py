@@ -1,5 +1,5 @@
-import pytest
-import os
+import pytest  # noqa: F401
+import os  # noqa: F401
 from ..engine import MiniCoverage
 
 # global instance for the session

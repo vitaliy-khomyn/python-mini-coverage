@@ -2,7 +2,8 @@ import unittest
 import os
 import sys
 
-def run_all_tests():
+
+def run_all_tests() -> None:
     """
     Discover and run all tests in the current directory.
     """
@@ -24,6 +25,7 @@ def run_all_tests():
 
     if not result.wasSuccessful():
         sys.exit(1)
+
 
 if __name__ == "__main__":
     run_all_tests()

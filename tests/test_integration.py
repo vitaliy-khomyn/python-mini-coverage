@@ -1,7 +1,6 @@
-import unittest
+import unittest  # noqa: F401
+import sys  # noqa: F401
 import os
-import json
-import sys
 from src.engine import MiniCoverage
 from tests.test_utils import BaseTestCase
 

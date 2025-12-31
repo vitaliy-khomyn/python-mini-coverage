@@ -1,5 +1,5 @@
-import unittest
-import sys
+import unittest  # noqa: F401
+import sys  # noqa: F401
 import os
 import threading
 import sqlite3
