@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import logging
 import glob
 import uuid
 from typing import Dict, Any, Callable
@@ -13,6 +14,7 @@ class CoverageStorage:
     """
 
     def __init__(self, data_file: str):
+        self.logger = logging.getLogger(__name__)
         self.data_file = data_file
         # unique identifier for this process's partial file
         self.pid = os.getpid()
@@ -80,7 +82,7 @@ class CoverageStorage:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"[!] Failed to save coverage data to DB: {e}")
+            self.logger.error(f"Failed to save coverage data to DB: {e}")
 
     def combine(self, map_path_func: Callable[[str], str]) -> None:
         """
@@ -113,11 +115,11 @@ class CoverageStorage:
                 conn.commit()
                 cur.execute(f"DETACH DATABASE {alias}")
                 os.remove(filename)
-            except sqlite3.OperationalError:
+            except sqlite3.OperationalError as e:
                 # happens if file is locked or corrupt
-                pass
+                self.logger.debug(f"Skipping locked/corrupt partial file {filename}: {e}")
             except Exception as e:
-                print(f"[!] Error combining {filename}: {e}")
+                self.logger.error(f"Error combining {filename}: {e}")
 
         conn.close()
 
@@ -146,5 +148,5 @@ class CoverageStorage:
                 trace_data['instruction_arcs'][file][0].add((start, end))
 
             conn.close()
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            self.logger.debug(f"OperationalError loading {self.data_file}: {e}")

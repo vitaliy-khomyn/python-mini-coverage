@@ -1,6 +1,7 @@
 import sys
 import os
 import collections
+import logging
 import threading
 import multiprocessing
 import fnmatch
@@ -29,6 +30,8 @@ class MiniCoverage:
             project_root (str): The root directory to restrict tracing to.
             config_file (str): Optional path to a configuration file.
         """
+        self.logger = logging.getLogger(__name__)
+
         cwd = os.getcwd()
         if project_root:
             # use realpath to ensure having the canonical path (resolves symlinks and etc)
@@ -84,9 +87,9 @@ class MiniCoverage:
             try:
                 # The C tracer takes 'self' (the engine) to access trace_data and caches
                 self.c_tracer = minicov_tracer.Tracer(self)
-                print("[Info] Optimized C Tracer loaded.")
+                self.logger.info("Optimized C Tracer loaded.")
             except Exception as e:
-                print(f"[Warning] Failed to initialize C Tracer: {e}")
+                self.logger.warning(f"Failed to initialize C Tracer: {e}")
 
     def switch_context(self, context_label: str) -> None:
         """
@@ -224,7 +227,7 @@ class MiniCoverage:
             return True
 
         except Exception as e:
-            print(f"[Warning] sys.monitoring failed: {e}. Falling back to sys.settrace.")
+            self.logger.warning(f"sys.monitoring failed: {e}. Falling back to sys.settrace.")
             return False
 
     def _stop_sys_monitoring(self) -> None:
@@ -236,8 +239,8 @@ class MiniCoverage:
             tool_id = sys.monitoring.COVERAGE_ID
             sys.monitoring.set_events(tool_id, 0)
             sys.monitoring.free_tool_id(tool_id)
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.debug(f"Error stopping sys.monitoring: {e}")
 
     def _monitor_py_start(self, code: types.CodeType, instruction_offset: int) -> Any:
         """
@@ -463,10 +466,10 @@ class MiniCoverage:
             }
             exec(code, exec_globals)
 
-        except SystemExit:
-            pass
+        except SystemExit as e:
+            self.logger.debug(f"SystemExit caught during execution: {e}")
         except Exception as e:
-            print(f"\n[!] Exception: {e}")
+            self.logger.error(f"Exception during execution: {e}")
         finally:
             self.stop()
             sys.argv = original_argv

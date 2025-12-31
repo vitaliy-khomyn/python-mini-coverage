@@ -1,11 +1,18 @@
 import argparse
 import sys
 import os
+import logging
 
 from .engine import MiniCoverage
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[%(levelname)s] %(message)s',
+        stream=sys.stdout
+    )
+
     parser = argparse.ArgumentParser(
         prog="minicov",
         description="A minimalist code coverage tool."
@@ -32,7 +39,7 @@ def main() -> None:
         # ensure the script path is absolute or correct relatively to CWD
         script_path = args.script
         if not os.path.isfile(script_path):
-            print(f"Error: Script '{script_path}' not found.")
+            logging.error(f"Script '{script_path}' not found.")
             sys.exit(1)
 
         cov.run(script_path, args.script_args)
@@ -42,7 +49,7 @@ def main() -> None:
 
     elif args.command == "combine":
         cov.combine_data()
-        print("Coverage data combined.")
+        logging.info("Coverage data combined.")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import logging
 from .base import BaseReporter, AnalysisResults
 
 
@@ -10,10 +11,11 @@ class JsonReporter(BaseReporter):
     """
 
     def __init__(self, output_file: str = "coverage.json") -> None:
+        self.logger = logging.getLogger(__name__)
         self.output_file = output_file
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
-        print(f"Generating JSON report to {self.output_file}...")
+        self.logger.info(f"Generating JSON report to {self.output_file}...")
 
         serializable_results = {}
         for filename, metrics in results.items():

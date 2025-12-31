@@ -5,6 +5,7 @@ from ..engine import MiniCoverage
 # global instance for the session
 _cov_engine = None
 
+
 def pytest_addoption(parser):
     """Register command line options."""
     group = parser.getgroup("minicov")

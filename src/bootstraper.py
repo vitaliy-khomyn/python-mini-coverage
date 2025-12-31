@@ -5,6 +5,7 @@ It checks for environment variables and auto-starts coverage.
 """
 import os
 import sys
+import logging
 
 
 def bootstrap():
@@ -15,6 +16,8 @@ def bootstrap():
     # only bootstrap if explicitly requested via env var
     if not config_file:
         return
+
+    logger = logging.getLogger("minicov.bootstrap")
 
     # avoid infinite recursion or double tracing if already active
     if sys.gettrace():
@@ -40,12 +43,12 @@ def bootstrap():
         import atexit
         atexit.register(cov.stop)
 
-    except ImportError:
+    except ImportError as e:
         # MiniCoverage not found, skip
-        pass
+        logger.debug(f"MiniCoverage not found during bootstrap: {e}")
     except Exception as e:
         # print warning but don't crash the user's process
-        print(f"[MiniCoverage] Bootstrapping failed: {e}", file=sys.stderr)
+        logger.warning(f"Bootstrapping failed: {e}")
 
 
 # auto-execute on import

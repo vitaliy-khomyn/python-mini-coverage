@@ -12,7 +12,11 @@ class BytecodeControlFlow(CoverageMetric):
     def get_name(self) -> str:
         return "Bytecode"
 
-    def get_possible_elements(self, code_obj: Optional[types.CodeType], ignored_lines: Optional[Set[int]] = None) -> Set[Tuple[int, int]]:
+    def get_possible_elements(
+        self,
+        code_obj: Optional[types.CodeType],
+        ignored_lines: Optional[Set[int]] = None
+    ) -> Set[Tuple[int, int]]:
         if not code_obj:
             return set()
 
@@ -20,7 +24,11 @@ class BytecodeControlFlow(CoverageMetric):
         self._analyze_code_object(code_obj, jumps)
         return jumps
 
-    def _analyze_code_object(self, co: types.CodeType, jumps: Set[Tuple[int, int]]) -> None:
+    def _analyze_code_object(
+        self,
+        co: types.CodeType,
+        jumps: Set[Tuple[int, int]]
+    ) -> None:
         # build CFG for the current code object
         cfg = ControlFlowGraph(co)
         jumps.update(cfg.get_jumps())

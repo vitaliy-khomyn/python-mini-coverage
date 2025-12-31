@@ -1,6 +1,7 @@
 import ast
 import re
 import types
+import logging
 from typing import Tuple, Set, Optional, Iterable
 
 
@@ -8,6 +9,9 @@ class SourceParser:
     """
     Handles file I/O, AST generation, Bytecode compilation, and Pragma detection.
     """
+
+    def __init__(self) -> None:
+        self.logger = logging.getLogger(__name__)
 
     def parse_source(
         self,
@@ -43,8 +47,8 @@ class SourceParser:
                 for pat in exclude_patterns:
                     try:
                         regexes.append(re.compile(pat))
-                    except re.error:
-                        pass  # ignore invalid regex
+                    except re.error as e:
+                        self.logger.debug(f"Invalid regex pattern '{pat}': {e}")
 
             for i, line in enumerate(source_lines):
                 for regex in regexes:
@@ -54,7 +58,8 @@ class SourceParser:
 
             return tree, ignored_lines
 
-        except (SyntaxError, OSError, UnicodeDecodeError):
+        except (SyntaxError, OSError, UnicodeDecodeError) as e:
+            self.logger.debug(f"Failed to parse source {filename}: {e}")
             return None, set()
 
     def compile_source(self, filename: str) -> Optional[types.CodeType]:
@@ -69,5 +74,6 @@ class SourceParser:
             with open(filename, 'r', encoding='utf-8') as f:
                 source = f.read()
             return compile(source, filename, 'exec')
-        except (SyntaxError, OSError, UnicodeDecodeError):
+        except (SyntaxError, OSError, UnicodeDecodeError) as e:
+            self.logger.debug(f"Failed to compile source {filename}: {e}")
             return None
