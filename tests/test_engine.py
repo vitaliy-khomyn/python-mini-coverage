@@ -219,9 +219,9 @@ class TestEngineCore(BaseTestCase):
 
         th1 = threading.Thread(target=t1_work)
         th2 = threading.Thread(target=t2_work)
-        th1.start();
+        th1.start()
         th2.start()
-        th1.join();
+        th1.join()
         th2.join()
 
         arcs = self.cov.trace_data['arcs'][filename][0]

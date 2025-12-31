@@ -6,7 +6,7 @@ from ..engine import MiniCoverage
 _cov_engine = None
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser) -> None:
     """Register command line options."""
     group = parser.getgroup("minicov")
     group.addoption(
@@ -16,7 +16,7 @@ def pytest_addoption(parser):
     )
 
 
-def pytest_configure(config):
+def pytest_configure(config) -> None:
     """
     Initialize the coverage engine if the flag is set.
     """
@@ -28,7 +28,7 @@ def pytest_configure(config):
         _cov_engine.start()
 
 
-def pytest_sessionfinish(session, exitstatus):
+def pytest_sessionfinish(session, exitstatus) -> None:
     """
     Stop coverage and save data at the end of the session.
     """
@@ -41,7 +41,7 @@ def pytest_sessionfinish(session, exitstatus):
         _cov_engine = None
 
 
-def pytest_runtest_setup(item):
+def pytest_runtest_setup(item) -> None:
     """
     Switch context before each test.
     Context ID: file.py::class::test_name (nodeid)
@@ -51,7 +51,7 @@ def pytest_runtest_setup(item):
         _cov_engine.switch_context(item.nodeid)
 
 
-def pytest_runtest_teardown(item):
+def pytest_runtest_teardown(item) -> None:
     """
     Revert to default context after test.
     """
