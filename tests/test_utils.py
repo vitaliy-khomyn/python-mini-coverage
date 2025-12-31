@@ -34,7 +34,7 @@ class BaseTestCase(unittest.TestCase):
         return filepath
 
     @contextmanager
-    def capture_stdout(self) -> Generator[Optional[io.StringIO]]:
+    def capture_stdout(self) -> Generator[Optional[io.StringIO], None, None]:
         """
         Captures stdout for testing console output.
         """
