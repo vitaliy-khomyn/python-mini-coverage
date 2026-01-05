@@ -21,6 +21,28 @@ from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage
 from .reporters import ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter, BaseReporter
 from .storage import CoverageStorage
 
+# global state to support pickling of the custom Process class
+_subprocess_config = {"project_root": None, "config_file": None}
+_OriginalProcess = multiprocessing.Process
+
+
+class CoverageProcess(_OriginalProcess):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cov_project_root = _subprocess_config["project_root"]
+        self._cov_config_file = _subprocess_config["config_file"]
+
+    def run(self) -> None:
+        if self._cov_project_root:
+            cov = MiniCoverage(project_root=self._cov_project_root, config_file=self._cov_config_file)
+            cov.start()
+            try:
+                super().run()
+            finally:
+                cov.stop()
+        else:
+            super().run()
+
 
 class MiniCoverage:
     def __init__(self, project_root: Optional[str] = None, config_file: Optional[str] = None) -> None:
@@ -156,22 +178,12 @@ class MiniCoverage:
         Ensures that child processes initialize their own coverage engine,
         collect data, and save it to disk upon exit.
         """
+        # Update global config for new processes
+        _subprocess_config["project_root"] = self.project_root
+        _subprocess_config["config_file"] = self.config_file
+
         if hasattr(multiprocessing, '_mini_coverage_patched'):
             return
-
-        OriginalProcess = multiprocessing.Process
-        project_root = self.project_root
-        config_file = self.config_file
-
-        class CoverageProcess(OriginalProcess):
-            def run(self) -> None:
-                cov = MiniCoverage(project_root=project_root, config_file=config_file)
-                # ensure child process starts the correct backend
-                cov.start()
-                try:
-                    super().run()
-                finally:
-                    cov.stop()
 
         multiprocessing.Process = CoverageProcess
         multiprocessing._mini_coverage_patched = True  # type: ignore
@@ -212,8 +224,6 @@ class MiniCoverage:
         Returns True if successful, False otherwise.
         """
         try:
-            import sys.monitoring
-
             tool_id = sys.monitoring.COVERAGE_ID
             sys.monitoring.use_tool_id(tool_id, "MiniCoverage")
 
@@ -236,7 +246,6 @@ class MiniCoverage:
         Disable sys.monitoring.
         """
         try:
-            import sys.monitoring
             tool_id = sys.monitoring.COVERAGE_ID
             sys.monitoring.set_events(tool_id, 0)
             sys.monitoring.free_tool_id(tool_id)
@@ -256,12 +265,10 @@ class MiniCoverage:
             self._cache_traceable[filename] = self._should_trace(abs_filename)
 
         if self._cache_traceable[filename]:
-            import sys.monitoring
             # enable LINE and BRANCH events for this code object
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code,
                                             sys.monitoring.events.LINE | sys.monitoring.events.BRANCH)
         else:
-            import sys.monitoring
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code, 0)
 
     def _monitor_line(self, code: types.CodeType, line_number: int) -> Any:
@@ -454,18 +461,23 @@ class MiniCoverage:
         sys.argv = [script_path] + (script_args if script_args else [])
         sys.path.insert(0, script_dir)
 
+        # Create a module for the script to support multiprocessing pickling
+        main_mod = types.ModuleType("__main__")
+        main_mod.__file__ = abs_script_path
+        main_mod.__builtins__ = __builtins__
+
+        # Backup existing __main__
+        old_main = sys.modules['__main__']
+        sys.modules['__main__'] = main_mod
+
         try:
             with open(abs_script_path, 'rb') as f:
                 code = compile(f.read(), abs_script_path, 'exec')
 
             self.start()
 
-            exec_globals = {
-                '__name__': '__main__',
-                '__file__': abs_script_path,
-                '__builtins__': __builtins__
-            }
-            exec(code, exec_globals)
+            # Execute code within the new module namespace
+            exec(code, main_mod.__dict__)
 
         except SystemExit as e:
             self.logger.debug(f"SystemExit caught during execution: {e}")
@@ -475,6 +487,7 @@ class MiniCoverage:
             self.stop()
             sys.argv = original_argv
             sys.path = original_path
+            sys.modules['__main__'] = old_main
 
     def report(self) -> None:
         """
