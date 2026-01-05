@@ -24,8 +24,11 @@ class HtmlReporter(BaseReporter):
             self._generate_file_report(filename, data, project_root)
 
     def _generate_index(self, results: AnalysisResults, project_root: str) -> None:
-        total_stmts = 0
-        total_miss = 0
+        totals = {
+            'stmt': {'possible': 0, 'missing': 0},
+            'branch': {'possible': 0, 'missing': 0},
+            'cond': {'possible': 0, 'missing': 0}
+        }
 
         rows = ""
         for filename in sorted(results.keys()):
@@ -33,12 +36,21 @@ class HtmlReporter(BaseReporter):
             if not stmt:
                 continue
 
-            possible = len(stmt['possible'])
-            miss = len(stmt['missing'])
-            total_stmts += possible
-            total_miss += miss
+            branch = results[filename].get('Branch', {})
+            cond = results[filename].get('Condition', {})
 
-            pct = stmt['pct']
+            totals['stmt']['possible'] += len(stmt.get('possible', []))
+            totals['stmt']['missing'] += len(stmt.get('missing', []))
+
+            totals['branch']['possible'] += len(branch.get('possible', []))
+            totals['branch']['missing'] += len(branch.get('missing', []))
+
+            totals['cond']['possible'] += len(cond.get('possible', []))
+            totals['cond']['missing'] += len(cond.get('missing', []))
+
+            # calculate percentages for this file
+            # ensure pct exists even if empty
+            stmt.setdefault('pct', 0)
 
             rel_name = os.path.relpath(filename, project_root)
             file_html_link = f"{self._sanitize_filename(rel_name)}.html"
@@ -46,16 +58,21 @@ class HtmlReporter(BaseReporter):
             rows += templates.render_index_row(
                 file_html_link,
                 html.escape(rel_name),
-                possible,
-                miss,
-                pct
+                stmt,
+                branch,
+                cond
             )
 
-        total_pct = 100.0
-        if total_stmts > 0:
-            total_pct = ((total_stmts - total_miss) / total_stmts) * 100
+        # calculate total percentages
+        def calc_pct(poss, miss):
+            if poss == 0: return 100.0
+            return ((poss - miss) / poss) * 100.0
 
-        html_content = templates.render_index(total_pct, rows)
+        total_stmt_pct = calc_pct(totals['stmt']['possible'], totals['stmt']['missing'])
+        total_branch_pct = calc_pct(totals['branch']['possible'], totals['branch']['missing'])
+        total_cond_pct = calc_pct(totals['cond']['possible'], totals['cond']['missing'])
+
+        html_content = templates.render_index(total_stmt_pct, total_branch_pct, total_cond_pct, rows)
 
         with open(os.path.join(self.output_dir, "index.html"), "w") as f:
             f.write(html_content)
