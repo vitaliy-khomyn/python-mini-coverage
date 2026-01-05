@@ -135,17 +135,23 @@ class CoverageStorage:
             conn = sqlite3.connect(self.data_file)
             cur = conn.cursor()
 
+            # Helper to normalize paths to prevent duplicates (e.g. relative vs absolute)
+            def normalize(p: str) -> str:
+                if os.path.exists(p):
+                    return os.path.normcase(os.path.realpath(p))
+                return os.path.normcase(p)
+
             cur.execute(queries.SELECT_LINES)
             for file, line in cur.fetchall():
-                trace_data['lines'][file][0].add(line)
+                trace_data['lines'][normalize(file)][0].add(line)
 
             cur.execute(queries.SELECT_ARCS)
             for file, start, end in cur.fetchall():
-                trace_data['arcs'][file][0].add((start, end))
+                trace_data['arcs'][normalize(file)][0].add((start, end))
 
             cur.execute(queries.SELECT_INSTRUCTION_ARCS)
             for file, start, end in cur.fetchall():
-                trace_data['instruction_arcs'][file][0].add((start, end))
+                trace_data['instruction_arcs'][normalize(file)][0].add((start, end))
 
             conn.close()
         except sqlite3.OperationalError as e:

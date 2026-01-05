@@ -151,6 +151,10 @@ class MiniCoverage:
         Remap a file path based on the [paths] configuration.
         Returns the canonical path if a match is found, otherwise the original.
         """
+        # try to resolve to absolute path first to help merging
+        if os.path.exists(path):
+            path = os.path.realpath(path)
+
         path = os.path.normcase(path)
         for canonical, aliases in self.config.get('paths', {}).items():
             for alias in aliases:
