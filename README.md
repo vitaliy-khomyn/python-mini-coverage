@@ -1,7 +1,7 @@
 # **MiniCoverage**
 
-MiniCoverage is a modern code coverage tool designed for Python developers who need more than just line counts. While it started as a lightweight alternative to established frameworks, it has evolved into a robust engine capable of advanced analysis features like Modified Condition/Decision Coverage (MC/DC) and multiprocessing support, all while maintaining a low performance overhead.  
-The philosophy is simple: coverage tools should be invisible until needed, and when needed, accurate code execution data should be provided, not just approximations.
+MiniCoverage is a modern code coverage tool designed for Python developers who need more than just line counts. While it started as a lightweight alternative to established frameworks, its primary goal is to serve as a platform for **further testing** and validation of new coverage metrics. It has evolved into a robust engine capable of advanced analysis features like Modified Condition/Decision Coverage (MC/DC) and multiprocessing support, all while maintaining a low performance overhead.  
+The philosophy is simple: coverage tools should be invisible until needed, and when needed, accurate code execution data should be provided to validate new testing methodologies.
 
 ## **Overview**
 
@@ -16,7 +16,7 @@ To set up, ensure the source code is in the project path. To enable the high-per
 python setup.py build_ext --inplace
 ```
 
-If this step is skipped, the tool will still work perfectly fine using the pure Python implementation, though it may run slightly slower on very large codebases.
+If this step is skipped, the tool will still work perfectly fine using the pure Python implementation, though it may run slower on very large codebases.
 
 ## **Usage**
 
@@ -66,7 +66,7 @@ exclude_lines = ["pragma: no cover"]
 ```
 ## **Key Features**
 
-### **True MC/DC Support**
+### ** MC/DC Support**
 
 Most tools stop at Branch Coverage, which checks if an if statement went both True and False. MiniCoverage goes further by analyzing the bytecode to support Modified Condition/Decision Coverage. This means if a complex condition exists like if A and B, verification is performed to ensure that A and B were evaluated independently, ensuring robust testing for critical logic.
 

@@ -6,7 +6,7 @@ from .cfg import ControlFlowGraph
 
 class ConditionCoverage(CoverageMetric):
     """
-    True MC/DC Implementation.
+    MC/DC Implementation.
     Identifies boolean jump instructions and verifies that both outcomes (True/False)
     were executed at the bytecode level.
     """

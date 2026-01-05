@@ -25,10 +25,10 @@ def main() -> None:
     parser_run.add_argument("script_args", nargs=argparse.REMAINDER, help="Arguments for the script.")
 
     # command: report
-    parser_report = subparsers.add_parser("report", help="Report coverage results.")
+    _ = subparsers.add_parser("report", help="Report coverage results.")
 
     # command: combine
-    parser_combine = subparsers.add_parser("combine", help="Combine data from multiple run files.")
+    _ = subparsers.add_parser("combine", help="Combine data from multiple run files.")
 
     args = parser.parse_args()
 

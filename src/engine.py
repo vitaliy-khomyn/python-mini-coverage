@@ -1,11 +1,12 @@
 import sys
 import os
-import collections
 import logging
 import threading
 import multiprocessing
 import fnmatch
 import types
+
+from collections import defaultdict
 from typing import Optional, List, Dict, Any, Set
 
 # try to import the C extension
@@ -52,9 +53,9 @@ class MiniCoverage:
         # 'arcs': set((start, end))
         # 'instruction_arcs': set((from_offset, to_offset)) -> New for MC/DC
         self.trace_data: Dict[str, Dict[Any, Any]] = {
-            'lines': collections.defaultdict(lambda: collections.defaultdict(set)),
-            'arcs': collections.defaultdict(lambda: collections.defaultdict(set)),
-            'instruction_arcs': collections.defaultdict(lambda: collections.defaultdict(set))
+            'lines': defaultdict(lambda: defaultdict(set)),
+            'arcs': defaultdict(lambda: defaultdict(set)),
+            'instruction_arcs': defaultdict(lambda: defaultdict(set))
         }
 
         self.current_context: str = "default"
