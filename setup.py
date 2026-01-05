@@ -16,6 +16,7 @@ setup(
     name='minicov',
     version='1.0.0',
     description='A minimalist, high-performance (I hope) code coverage tool with MC/DC support and plans for further expansion.',
+    license='Apache 2.0',
     author='Vitaliy Khomyn',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
@@ -38,6 +39,7 @@ setup(
         'Programming Language :: Python :: 3.12',
         'Programming Language :: Python :: 3.13',
         'Programming Language :: Python :: 3.14',
+        'License :: OSI Approved :: Apache Software License',
     ],
     python_requires='>=3.10',
 )
