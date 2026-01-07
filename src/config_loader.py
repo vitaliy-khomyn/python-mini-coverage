@@ -1,7 +1,8 @@
 import os
 import logging
 import configparser
-from typing import Optional, Dict, Any, Set
+from typing import Optional, Set
+from .config import CoverageConfig
 
 # try importing tomllib for pyproject.toml support (Python 3.11+)
 try:
@@ -18,7 +19,7 @@ class ConfigLoader:
     def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
 
-    def load_config(self, project_root: str, config_file: Optional[str] = None) -> Dict[str, Any]:
+    def load_config(self, project_root: str, config_file: Optional[str] = None) -> CoverageConfig:
         """
         Load configuration from pyproject.toml, .coveragerc, setup.cfg, or a specified file.
         Supports environment variable overrides.
@@ -28,23 +29,14 @@ class ConfigLoader:
             config_file (str): Optional explicit path to a config file.
 
         Returns:
-            dict: Configuration dictionary with normalized options.
+            CoverageConfig: Configuration object with normalized options.
         """
-        config: Dict[str, Any] = {
-            'omit': set(),
-            'include': set(),
-            'source': set(),
-            'branch': False,
-            'concurrency': 'thread',
-            'exclude_lines': set(),
-            'data_file': '.coverage.db',
-            'paths': {}  # map canonical_name -> [list of aliases]
-        }
+        config = CoverageConfig()
 
         # check environment variables for overrides (highest precedence for file location)
         env_data_file = os.environ.get('COVERAGE_FILE')
         if env_data_file:
-            config['data_file'] = env_data_file
+            config.data_file = env_data_file
 
         candidates = [config_file] if config_file else ['pyproject.toml', '.coveragerc', 'setup.cfg', 'tox.ini']
 
@@ -72,7 +64,7 @@ class ConfigLoader:
 
         return config
 
-    def _load_ini(self, path: str, config: Dict[str, Any]) -> bool:
+    def _load_ini(self, path: str, config: CoverageConfig) -> bool:
         """Parse INI configuration file."""
         parser = configparser.ConfigParser()
         try:
@@ -108,32 +100,32 @@ class ConfigLoader:
             for key in ['omit', 'include', 'source']:
                 if parser.has_option(run_section, key):
                     val = parser.get(run_section, key)
-                    config[key].update(self._parse_list(val))
+                    getattr(config, key).update(self._parse_list(val))
 
             if parser.has_option(run_section, 'branch'):
-                config['branch'] = parser.getboolean(run_section, 'branch')
+                config.branch = parser.getboolean(run_section, 'branch')
 
             if parser.has_option(run_section, 'concurrency'):
-                config['concurrency'] = parser.get(run_section, 'concurrency').strip()
+                config.concurrency = parser.get(run_section, 'concurrency').strip()
 
             if parser.has_option(run_section, 'data_file'):
-                config['data_file'] = parser.get(run_section, 'data_file').strip()
+                config.data_file = parser.get(run_section, 'data_file').strip()
 
         # parse report section
         if report_section and parser.has_option(report_section, 'exclude_lines'):
             val = parser.get(report_section, 'exclude_lines')
-            config['exclude_lines'].update(self._parse_list(val))
+            config.exclude_lines.update(self._parse_list(val))
 
         # parse paths section
         if paths_section:
             for option in parser.options(paths_section):
                 val = parser.get(paths_section, option)
                 # key is the canonical name, Value is list of paths
-                config['paths'][option] = list(self._parse_list(val))
+                config.paths[option] = list(self._parse_list(val))
 
         return True
 
-    def _load_toml(self, path: str, config: Dict[str, Any]) -> None:
+    def _load_toml(self, path: str, config: CoverageConfig) -> None:
         """Parse TOML configuration file (pyproject.toml)."""
         with open(path, 'rb') as f:
             data = tomllib.load(f)  # type: ignore
@@ -148,26 +140,26 @@ class ConfigLoader:
 
         # run section
         if 'omit' in run:
-            config['omit'].update(run['omit'])
+            config.omit.update(run['omit'])
         if 'include' in run:
-            config['include'].update(run['include'])
+            config.include.update(run['include'])
         if 'source' in run:
-            config['source'].update(run['source'])
+            config.source.update(run['source'])
         if 'branch' in run:
-            config['branch'] = bool(run['branch'])
+            config.branch = bool(run['branch'])
         if 'concurrency' in run:
-            config['concurrency'] = str(run['concurrency'])
+            config.concurrency = str(run['concurrency'])
         if 'data_file' in run:
-            config['data_file'] = str(run['data_file'])
+            config.data_file = str(run['data_file'])
 
         # report section
         if 'exclude_lines' in report:
-            config['exclude_lines'].update(report['exclude_lines'])
+            config.exclude_lines.update(report['exclude_lines'])
 
         # paths section
         if paths:
             # TOML structure for paths is Key = [List]
-            config['paths'] = paths
+            config.paths = paths
 
     def _parse_list(self, raw_str: str) -> Set[str]:
         """Helper to parse multiline or comma-separated strings into a set."""

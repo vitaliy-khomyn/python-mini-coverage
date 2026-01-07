@@ -122,7 +122,7 @@ class TestMissingCoverage(unittest.TestCase):
     def test_should_trace_exclusions(self):
         """Test _should_trace logic for exclusions."""
         # setup config with omit pattern
-        self.cov.config['omit'] = ['vendor/*']
+        self.cov.config.omit = ['vendor/*']
 
         # test excluded file
         excluded_path = os.path.normcase(os.path.join(self.cov.project_root, "excluded.py"))

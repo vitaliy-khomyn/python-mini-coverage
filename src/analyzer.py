@@ -1,6 +1,7 @@
 import os
 from collections import defaultdict
 from typing import Dict, Any, Set
+from .config import CoverageConfig
 
 
 class Analyzer:
@@ -9,7 +10,7 @@ class Analyzer:
     to calculate coverage metrics.
     """
 
-    def __init__(self, parser, metrics, config: Dict[str, Any], path_manager, excluded_files: Set[str]):
+    def __init__(self, parser, metrics, config: CoverageConfig, path_manager, excluded_files: Set[str]):
         self.parser = parser
         self.metrics = metrics
         self.config = config
@@ -40,7 +41,7 @@ class Analyzer:
             norm = self.path_manager.canonicalize(f)
             file_map[norm].append(f)
 
-        exclude_patterns = self.config.get('exclude_lines', set())
+        exclude_patterns = self.config.exclude_lines
 
         for norm_file, raw_files in file_map.items():
             # 2. aggregate data from all raw aliases

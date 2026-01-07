@@ -188,8 +188,7 @@ class TestEngineCore(BaseTestCase):
             self.assertEqual(count, 1, "Should merge duplicate context labels")
 
     def test_config_data_file_custom(self):
-        self.cov.config['data_file'] = "custom.sqlite"
-        # update storage instance to reflect new config
+        self.cov.config.data_file = "custom.sqlite"
         self.cov.storage.data_file = "custom.sqlite"
 
         filename = os.path.join(self.test_dir, "test.py")

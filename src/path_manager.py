@@ -1,13 +1,14 @@
 import os
 import fnmatch
-from typing import Dict, Any, Set
+from typing import Set
+from .config import CoverageConfig
 
 
 class PathManager:
     """
     Centralizes path normalization, canonicalization, and filtering logic.
     """
-    def __init__(self, project_root: str, config: Dict[str, Any]):
+    def __init__(self, project_root: str, config: CoverageConfig):
         self.project_root = self.canonicalize(project_root)
         self.config = config
 
@@ -34,7 +35,10 @@ class PathManager:
         Remap a file path based on the [paths] configuration.
         """
         path = self.canonicalize(path)
-        for canonical, aliases in self.config.get('paths', {}).items():
+        # handle case where config is a dict (during init) or CoverageConfig
+        paths_config = self.config.get('paths', {}) if isinstance(self.config, dict) else self.config.paths
+
+        for canonical, aliases in paths_config.items():
             for alias in aliases:
                 norm_alias = os.path.normcase(alias)
                 if path.startswith(norm_alias):
@@ -56,7 +60,9 @@ class PathManager:
         # normalize to forward slashes for consistent pattern matching
         rel_path = rel_path.replace(os.sep, '/')
 
-        for pattern in self.config.get('omit', []):
+        omit_patterns = self.config.get('omit', []) if isinstance(self.config, dict) else self.config.omit
+
+        for pattern in omit_patterns:
             if fnmatch.fnmatch(rel_path, pattern):
                 return False
 

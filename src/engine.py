@@ -13,6 +13,8 @@ try:
 except ImportError:
     minicov_tracer = None
 
+from .config import CoverageConfig
+from .report_manager import ReportManager
 from .analyzer import Analyzer
 from .tracing.sys_monitoring import SysMonitoringTracer
 from .tracing.sys_settrace import SysSetTraceTracer
@@ -21,7 +23,6 @@ from .path_manager import PathManager
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
 from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage
-from .reporters import ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter, BaseReporter
 from .storage import CoverageStorage
 
 _OriginalProcess = multiprocessing.Process
@@ -69,7 +70,7 @@ class MiniCoverage:
         # note: config is loaded with the raw root first, then PathManager canonicalizes it
         self.path_manager = PathManager(root, {})
         self.project_root = self.path_manager.project_root
-        self.config: Dict[str, Any] = self.config_loader.load_config(self.project_root, config_file)
+        self.config: CoverageConfig = self.config_loader.load_config(self.project_root, config_file)
         self.path_manager.config = self.config
 
         # structure: {filename: {context_id: {data}}}
@@ -85,7 +86,7 @@ class MiniCoverage:
         self._context_lock = threading.Lock()
 
         # initialize storage manager
-        self.storage = CoverageStorage(self.config['data_file'])
+        self.storage = CoverageStorage(self.config.data_file)
 
         self.parser = SourceParser()
         self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage()]
@@ -93,12 +94,7 @@ class MiniCoverage:
         self.excluded_files: Set[str] = set()
         self.analyzer = Analyzer(self.parser, self.metrics, self.config, self.path_manager, self.excluded_files)
 
-        self.reporters: List[BaseReporter] = [
-            ConsoleReporter(),
-            HtmlReporter(output_dir="htmlcov"),
-            XmlReporter(output_file="coverage.xml"),
-            JsonReporter(output_file="coverage.json")
-        ]
+        self.report_manager = ReportManager(self.config.reporters)
 
         self._cache_traceable: Dict[str, bool] = {}
         self.thread_local = threading.local()
@@ -303,6 +299,4 @@ class MiniCoverage:
         """
         self.combine_data()
         results = self.analyze()
-
-        for reporter in self.reporters:
-            reporter.generate(results, self.project_root)
+        self.report_manager.generate(results, self.project_root)

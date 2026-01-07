@@ -6,6 +6,7 @@ import ast
 from unittest.mock import MagicMock, patch
 from src.engine import MiniCoverage
 from src.config_loader import ConfigLoader
+from src.config import CoverageConfig
 from src.source_parser import SourceParser
 
 
@@ -20,7 +21,7 @@ class TestBranchCoverage(unittest.TestCase):
         src_alias = os.path.normcase(os.path.abspath("/w/source/"))
         src_canonical = os.path.normcase(os.path.abspath("/src/"))
 
-        self.cov.config['paths'] = {
+        self.cov.config.paths = {
             src_canonical: [src_alias]
         }
 
@@ -103,14 +104,14 @@ class TestBranchCoverage(unittest.TestCase):
         self.assertEqual(res, {'a', 'b', 'c', 'd'})
 
         # test _load_ini with alternative section names
-        config = {'omit': set(), 'include': set(), 'source': set()}
+        config = CoverageConfig()
         with open("dummy.ini", "w") as f:
             f.write("[coverage:run]\nomit = *.tmp")
 
         try:
             res = loader._load_ini("dummy.ini", config)
             self.assertTrue(res)
-            self.assertIn("*.tmp", config['omit'])
+            self.assertIn("*.tmp", config.omit)
         finally:
             if os.path.exists("dummy.ini"):
                 os.remove("dummy.ini")
