@@ -15,9 +15,8 @@ class TestBranchCoverage(unittest.TestCase):
 
     def test_map_path_logic(self):
         """Test _map_path with configured aliases."""
-        # setup config with paths
-        # use normcase to ensure the test works on both Windows and Linux
-        # use abspath to match PathManager.canonicalize behavior (handling drive letters)
+        # Setup config with paths
+        # We use normcase to ensure the test works on both Windows and Linux
         src_alias = os.path.normcase(os.path.abspath("/w/source/"))
         src_canonical = os.path.normcase(os.path.abspath("/src/"))
 
@@ -56,7 +55,7 @@ class TestBranchCoverage(unittest.TestCase):
 
         with patch.object(self.cov.path_manager, 'should_trace', return_value=False):
             with patch('sys.monitoring.set_local_events') as mock_set:
-                self.cov._monitor_py_start(code, 0)
+                self.cov.sys_monitoring_tracer._monitor_py_start(code, 0)
                 # should call set_local_events with 0 (disable)
                 mock_set.assert_any_call(sys.monitoring.COVERAGE_ID, code, 0)
 
@@ -66,7 +65,7 @@ class TestBranchCoverage(unittest.TestCase):
         self.cov.thread_local.last_lasti = 20
 
         code = MagicMock(spec=types.CodeType)
-        self.cov._monitor_py_resume(code, 0)
+        self.cov.sys_monitoring_tracer._monitor_py_resume(code, 0)
 
         self.assertIsNone(self.cov.thread_local.last_line)
         self.assertIsNone(self.cov.thread_local.last_lasti)
@@ -79,20 +78,20 @@ class TestBranchCoverage(unittest.TestCase):
         # test 'call' event
         self.cov.thread_local.last_line = 10
         self.cov.thread_local.last_lasti = 20
-        self.cov.trace_function(frame, "call", None)
+        self.cov.sys_settrace_tracer.trace_function(frame, "call", None)
         self.assertIsNone(self.cov.thread_local.last_line)
         self.assertIsNone(self.cov.thread_local.last_lasti)
 
         # test 'return' event
         self.cov.thread_local.last_line = 10
-        self.cov.trace_function(frame, "return", None)
+        self.cov.sys_settrace_tracer.trace_function(frame, "return", None)
         self.assertIsNone(self.cov.thread_local.last_line)
 
     def test_trace_function_other_events(self):
         """Test trace_function ignores other events."""
         frame = MagicMock()
-        res = self.cov.trace_function(frame, "exception", None)
-        self.assertEqual(res, self.cov.trace_function)
+        res = self.cov.sys_settrace_tracer.trace_function(frame, "exception", None)
+        self.assertEqual(res, self.cov.sys_settrace_tracer.trace_function)
 
     def test_config_loader_parsing(self):
         """Test ConfigLoader parsing logic."""
@@ -150,14 +149,12 @@ class TestBranchCoverage(unittest.TestCase):
 
                     self.cov.parser.parse_source = MagicMock(return_value=(real_ast, set()))
                     self.cov.parser.compile_source = MagicMock(return_value=real_code)
-                    # Mock path_manager.should_trace as Analyzer uses it now
                     self.cov.path_manager.should_trace = MagicMock(return_value=True)
 
-                    # Run analyze
+                    # run analyze
                     results = self.cov.analyze()
 
-                    # Check if lines were merged (1 and 2)
-                    # The canonical filename chosen depends on set iteration order of raw files
+                    # check if lines were merged (1 and 2)
                     self.assertEqual(len(results), 1)
                     result_key = list(results.keys())[0]
                     stmt_stats = results[result_key]["Statement"]

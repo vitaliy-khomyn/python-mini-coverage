@@ -32,7 +32,7 @@ class TestMissingCoverage(unittest.TestCase):
 
         with patch('sys.monitoring.set_events', side_effect=ValueError("Stop Error")):
             # should not raise exception
-            self.cov._stop_sys_monitoring()
+            self.cov.sys_monitoring_tracer.stop()
 
     def test_storage_save_exception(self):
         """Test that save handles DB exceptions gracefully."""

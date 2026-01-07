@@ -32,29 +32,29 @@ class TestEngineCore(BaseTestCase):
     def test_trace_function_line_capture(self):
         filename = os.path.join(self.test_dir, "test.py")
         frame = MockFrame(filename, 10)
-        self.cov.trace_function(frame, "line", None)
+        self.cov.sys_settrace_tracer.trace_function(frame, "line", None)
         # default context is 0
         self.assertIn(10, self.cov.trace_data['lines'][filename][0])
 
     def test_trace_function_arc_capture_same_file(self):
         filename = os.path.join(self.test_dir, "test.py")
         f1 = MockFrame(filename, 10)
-        self.cov.trace_function(f1, "line", None)
+        self.cov.sys_settrace_tracer.trace_function(f1, "line", None)
         f2 = MockFrame(filename, 11)
-        self.cov.trace_function(f2, "line", None)
+        self.cov.sys_settrace_tracer.trace_function(f2, "line", None)
         self.assertIn((10, 11), self.cov.trace_data['arcs'][filename][0])
 
     def test_trace_function_arc_cross_file_reset(self):
         f1 = os.path.join(self.test_dir, "a.py")
         f2 = os.path.join(self.test_dir, "b.py")
 
-        self.cov.trace_function(MockFrame(f1, 1), "line", None)
-        self.cov.trace_function(MockFrame(f2, 1), "line", None)
+        self.cov.sys_settrace_tracer.trace_function(MockFrame(f1, 1), "line", None)
+        self.cov.sys_settrace_tracer.trace_function(MockFrame(f2, 1), "line", None)
 
         # should NOT link a.py:1 -> b.py:1
         self.assertEqual(len(self.cov.trace_data['arcs'][f1][0]), 0)
 
-        self.cov.trace_function(MockFrame(f2, 2), "line", None)
+        self.cov.sys_settrace_tracer.trace_function(MockFrame(f2, 2), "line", None)
         self.assertIn((1, 2), self.cov.trace_data['arcs'][f2][0])
 
     def test_context_switching(self):
@@ -75,7 +75,7 @@ class TestEngineCore(BaseTestCase):
         filename = os.path.join(self.test_dir, "test.py")
 
         self.cov.switch_context("test_A")
-        self.cov.trace_function(MockFrame(filename, 10), "line", None)
+        self.cov.sys_settrace_tracer.trace_function(MockFrame(filename, 10), "line", None)
 
         self.cov.save_data()
 
@@ -204,17 +204,17 @@ class TestEngineCore(BaseTestCase):
 
         def t1_work():
             f1 = MockFrame(filename, 10)
-            self.cov.trace_function(f1, "line", None)
+            self.cov.sys_settrace_tracer.trace_function(f1, "line", None)
             import time;
             time.sleep(0.01)
             f2 = MockFrame(filename, 11)
-            self.cov.trace_function(f2, "line", None)
+            self.cov.sys_settrace_tracer.trace_function(f2, "line", None)
 
         def t2_work():
             f1 = MockFrame(filename, 20)
-            self.cov.trace_function(f1, "line", None)
+            self.cov.sys_settrace_tracer.trace_function(f1, "line", None)
             f2 = MockFrame(filename, 21)
-            self.cov.trace_function(f2, "line", None)
+            self.cov.sys_settrace_tracer.trace_function(f2, "line", None)
 
         th1 = threading.Thread(target=t1_work)
         th2 = threading.Thread(target=t2_work)

@@ -14,6 +14,8 @@ except ImportError:
     minicov_tracer = None
 
 from .analyzer import Analyzer
+from .tracing.sys_monitoring import SysMonitoringTracer
+from .tracing.sys_settrace import SysSetTraceTracer
 from .trace_data import TraceContainer
 from .path_manager import PathManager
 from .source_parser import SourceParser
@@ -111,6 +113,10 @@ class MiniCoverage:
             except Exception as e:
                 self.logger.warning(f"Failed to initialize C Tracer: {e}")
 
+        # initialize tracers
+        self.sys_monitoring_tracer = SysMonitoringTracer(self)
+        self.sys_settrace_tracer = SysSetTraceTracer(self, self.c_tracer)
+
     def switch_context(self, context_label: str) -> None:
         """
         Switch the current recording context.
@@ -180,173 +186,23 @@ class MiniCoverage:
         """
         self._patch_multiprocessing()
 
-        use_monitoring = False
+        success = False
         if sys.version_info >= (3, 12):
-            use_monitoring = self._start_sys_monitoring()
+            success = self.sys_monitoring_tracer.start()
 
         # fallback to sys.settrace if monitoring failed or is unavailable
-        if not use_monitoring:
-            tracer = self.c_tracer if self.c_tracer else self.trace_function
-            sys.settrace(tracer)
-            threading.settrace(tracer)
+        if not success:
+            self.sys_settrace_tracer.start()
 
     def stop(self) -> None:
         """
         Stop coverage tracing and save data to disk.
         """
         if sys.version_info >= (3, 12):
-            self._stop_sys_monitoring()
+            self.sys_monitoring_tracer.stop()
 
-        # always unset settrace as well, just in case fallback was active
-        sys.settrace(None)
-        threading.settrace(None)
-
+        self.sys_settrace_tracer.stop()
         self.save_data()
-
-    def _start_sys_monitoring(self) -> bool:
-        """
-        Enable sys.monitoring (Python 3.12+).
-        Returns True if successful, False otherwise.
-        """
-        try:
-            tool_id = sys.monitoring.COVERAGE_ID
-            sys.monitoring.use_tool_id(tool_id, "MiniCoverage")
-
-            # register callbacks
-            # monitor PY_START to filter files efficiently
-            sys.monitoring.register_callback(tool_id, sys.monitoring.events.PY_START, self._monitor_py_start)
-            sys.monitoring.register_callback(tool_id, sys.monitoring.events.PY_RESUME, self._monitor_py_resume)
-            sys.monitoring.register_callback(tool_id, sys.monitoring.events.LINE, self._monitor_line)
-            sys.monitoring.register_callback(tool_id, sys.monitoring.events.BRANCH, self._monitor_branch)
-
-            # enable PY_START globally. Local events will be enabled in _monitor_py_start.
-            sys.monitoring.set_events(tool_id, sys.monitoring.events.PY_START)
-            return True
-
-        except Exception as e:
-            self.logger.warning(f"sys.monitoring failed: {e}. Falling back to sys.settrace.")
-            return False
-
-    def _stop_sys_monitoring(self) -> None:
-        """
-        Disable sys.monitoring.
-        """
-        try:
-            tool_id = sys.monitoring.COVERAGE_ID
-            sys.monitoring.set_events(tool_id, 0)
-            sys.monitoring.free_tool_id(tool_id)
-        except Exception as e:
-            self.logger.debug(f"Error stopping sys.monitoring: {e}")
-
-    def _monitor_py_start(self, code: types.CodeType, instruction_offset: int) -> Any:
-        """
-        sys.monitoring callback for PY_START.
-        Determines if a code object should be traced.
-        """
-        filename = code.co_filename
-
-        if filename not in self._cache_traceable:
-            self._cache_traceable[filename] = self.path_manager.should_trace(filename, self.excluded_files)
-
-        if self._cache_traceable[filename]:
-            # enable LINE and BRANCH events for this code object
-            sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code,
-                                            sys.monitoring.events.LINE | sys.monitoring.events.BRANCH | sys.monitoring.events.PY_RESUME)
-
-            # clear history on function entry to prevent cross-function arcs
-            if hasattr(self.thread_local, 'last_line'):
-                self.thread_local.last_line = None
-                self.thread_local.last_lasti = None
-        else:
-            sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code, 0)
-
-    def _monitor_py_resume(self, code: types.CodeType, instruction_offset: int) -> Any:
-        """
-        sys.monitoring callback for PY_RESUME.
-        """
-        # clear history on function resume to prevent cross-function arcs
-        if hasattr(self.thread_local, 'last_line'):
-            self.thread_local.last_line = None
-            self.thread_local.last_lasti = None
-        return None
-
-    def _monitor_line(self, code: types.CodeType, line_number: int) -> Any:
-        """
-        sys.monitoring callback for LINE events.
-        """
-        filename = code.co_filename
-        cid = self._get_current_context_id()
-
-        self._record_line(filename, line_number, cid)
-        return None  # keep event enabled
-
-    def _monitor_branch(self, code: types.CodeType, from_offset: int, to_offset: int) -> Any:
-        """
-        sys.monitoring callback for BRANCH events.
-        """
-        filename = code.co_filename
-        cid = self._get_current_context_id()
-
-        self.trace_data.add_instruction_arc(filename, cid, from_offset, to_offset)
-        return None
-
-    def trace_function(self, frame: types.FrameType, event: str, arg: Any) -> Any:
-        """
-        The main system trace callback (Python fallback).
-
-        Args:
-            frame: The current stack frame.
-            event: The trace event (e.g., 'line', 'call').
-            arg: Dependent on event type (unused for 'line').
-        """
-        # enable opcode tracing for this frame
-        if event == 'call':
-            frame.f_trace_opcodes = True
-            # clear history to prevent cross-function arcs
-            if hasattr(self.thread_local, 'last_line'):
-                self.thread_local.last_line = None
-                self.thread_local.last_lasti = None
-            return self.trace_function
-
-        if event == 'return':
-            # clear history to prevent cross-function arcs
-            if hasattr(self.thread_local, 'last_line'):
-                self.thread_local.last_line = None
-                self.thread_local.last_lasti = None
-            return self.trace_function
-
-        if event not in ('line', 'opcode'):
-            return self.trace_function
-
-        filename = frame.f_code.co_filename
-
-        if filename not in self._cache_traceable:
-            self._cache_traceable[filename] = self.path_manager.should_trace(filename, self.excluded_files)
-
-        if self._cache_traceable[filename]:
-            cid = self._get_current_context_id()
-
-            if not hasattr(self.thread_local, 'last_line'):
-                self.thread_local.last_line = None
-                self.thread_local.last_file = None
-                self.thread_local.last_lasti = None
-
-            # 1. line trace
-            if event == 'line':
-                lineno = frame.f_lineno
-                self._record_line(filename, lineno, cid)
-
-            # 2. opcode trace (for MC/DC)
-            current_lasti = frame.f_lasti
-            self._record_opcode(filename, current_lasti, cid)
-
-        else:
-            if hasattr(self.thread_local, 'last_line'):
-                self.thread_local.last_line = None
-                self.thread_local.last_file = None
-                self.thread_local.last_lasti = None
-
-        return self.trace_function
 
     def _record_line(self, filename: str, lineno: int, cid: int) -> None:
         self.trace_data.add_line(filename, cid, lineno)
@@ -365,6 +221,12 @@ class MiniCoverage:
         self.thread_local.last_file = filename
 
     def _record_opcode(self, filename: str, current_lasti: int, cid: int) -> None:
+        if not hasattr(self.thread_local, 'last_lasti'):
+            self.thread_local.last_lasti = None
+            if not hasattr(self.thread_local, 'last_file'):
+                self.thread_local.last_file = None
+            # do not reset last_line here as it might be set by _record_line
+
         last_lasti = self.thread_local.last_lasti
 
         if last_lasti is not None and self.thread_local.last_file == filename:
