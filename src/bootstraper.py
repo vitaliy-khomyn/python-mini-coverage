@@ -23,6 +23,11 @@ def bootstrap():
     if sys.gettrace():
         return
 
+    # check for sys.monitoring (Python 3.12+)
+    if sys.version_info >= (3, 12):
+        if sys.monitoring.get_tool(sys.monitoring.COVERAGE_ID):
+            return
+
     try:
         # we need to ensure src is in path if we are running from source
         # in a real install, this would be handled by pip

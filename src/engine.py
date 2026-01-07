@@ -101,7 +101,8 @@ class MiniCoverage:
 
         self._cache_traceable: Dict[str, bool] = {}
         # ensure excluded files are also normalized
-        self.excluded_files: Set[str] = {os.path.normcase(os.path.realpath(__file__))}
+        # self.excluded_files: Set[str] = {os.path.normcase(os.path.realpath(__file__))}
+        self.excluded_files: Set[str] = set()
         self.thread_local = threading.local()
 
         # initialize C Tracer if available
@@ -234,6 +235,7 @@ class MiniCoverage:
             # register callbacks
             # monitor PY_START to filter files efficiently
             sys.monitoring.register_callback(tool_id, sys.monitoring.events.PY_START, self._monitor_py_start)
+            sys.monitoring.register_callback(tool_id, sys.monitoring.events.PY_RESUME, self._monitor_py_resume)
             sys.monitoring.register_callback(tool_id, sys.monitoring.events.LINE, self._monitor_line)
             sys.monitoring.register_callback(tool_id, sys.monitoring.events.BRANCH, self._monitor_branch)
 
@@ -271,9 +273,24 @@ class MiniCoverage:
         if self._cache_traceable[filename]:
             # enable LINE and BRANCH events for this code object
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code,
-                                            sys.monitoring.events.LINE | sys.monitoring.events.BRANCH)
+                                            sys.monitoring.events.LINE | sys.monitoring.events.BRANCH | sys.monitoring.events.PY_RESUME)
+
+            # Clear history on function entry to prevent cross-function arcs
+            if hasattr(self.thread_local, 'last_line'):
+                self.thread_local.last_line = None
+                self.thread_local.last_lasti = None
         else:
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code, 0)
+
+    def _monitor_py_resume(self, code: types.CodeType, instruction_offset: int) -> Any:
+        """
+        sys.monitoring callback for PY_RESUME.
+        """
+        # Clear history on function resume to prevent cross-function arcs
+        if hasattr(self.thread_local, 'last_line'):
+            self.thread_local.last_line = None
+            self.thread_local.last_lasti = None
+        return None
 
     def _monitor_line(self, code: types.CodeType, line_number: int) -> Any:
         """
@@ -323,6 +340,17 @@ class MiniCoverage:
         # enable opcode tracing for this frame
         if event == 'call':
             frame.f_trace_opcodes = True
+            # Clear history to prevent cross-function arcs
+            if hasattr(self.thread_local, 'last_line'):
+                self.thread_local.last_line = None
+                self.thread_local.last_lasti = None
+            return self.trace_function
+
+        if event == 'return':
+            # Clear history to prevent cross-function arcs
+            if hasattr(self.thread_local, 'last_line'):
+                self.thread_local.last_line = None
+                self.thread_local.last_lasti = None
             return self.trace_function
 
         if event not in ('line', 'opcode'):
@@ -485,8 +513,10 @@ class MiniCoverage:
 
         except SystemExit as e:
             self.logger.debug(f"SystemExit caught during execution: {e}")
+            raise
         except Exception as e:
             self.logger.error(f"Exception during execution: {e}")
+            raise
         finally:
             self.stop()
             sys.argv = original_argv
