@@ -12,4 +12,4 @@ class CoverageConfig:
     exclude_lines: Set[str] = field(default_factory=set)
     data_file: str = '.coverage.db'
     paths: Dict[str, List[str]] = field(default_factory=dict)
-    reporters: List[str] = field(default_factory=lambda: ['console', 'html', 'xml', 'json'])
+    reporters: List[str] = field(default_factory=lambda: ['console', 'html'])

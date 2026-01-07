@@ -27,7 +27,7 @@ if __name__ == "__main__":
         self.assertGreater(len(stmt['executed']), 0)
 
         cov.report()
-        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "coverage.xml")))
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "htmlcov")))
 
     def test_threading_support(self):
         script = """

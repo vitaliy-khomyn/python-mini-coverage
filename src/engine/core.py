@@ -293,10 +293,15 @@ class MiniCoverage:
             sys.path = original_path
             sys.modules['__main__'] = old_main
 
-    def report(self) -> None:
+    def report(self, reporters: Optional[List[str]] = None) -> None:
         """
         Combine data from parallel runs and generate reports using all registered reporters.
         """
         self.combine_data()
         results = self.analyze()
-        self.report_manager.generate(results, self.project_root)
+
+        if reporters:
+            manager = ReportManager(reporters)
+            manager.generate(results, self.project_root)
+        else:
+            self.report_manager.generate(results, self.project_root)

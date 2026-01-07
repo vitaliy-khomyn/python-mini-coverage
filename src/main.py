@@ -25,7 +25,9 @@ def main() -> None:
     parser_run.add_argument("script_args", nargs=argparse.REMAINDER, help="Arguments for the script.")
 
     # command: report
-    _ = subparsers.add_parser("report", help="Report coverage results.")
+    parser_report = subparsers.add_parser("report", help="Report coverage results.")
+    parser_report.add_argument("--format", nargs="+", choices=['console', 'html', 'xml', 'json'],
+                               help="Specify output formats (console, html, xml, json). Default: console html")
 
     # command: combine
     _ = subparsers.add_parser("combine", help="Combine data from multiple run files.")
@@ -45,7 +47,7 @@ def main() -> None:
         cov.run(script_path, args.script_args)
 
     elif args.command == "report":
-        cov.report()
+        cov.report(reporters=args.format)
 
     elif args.command == "combine":
         cov.combine_data()
