@@ -55,7 +55,7 @@ def debug_info():
 """
         script_path = self.create_file("exclude.py", script)
 
-        # Explicit newline formatting for configparser
+        # explicit newline formatting for configparser
         config = "[report]\nexclude_lines =\n    def debug_info"
         self.create_file(".coveragerc", config)
 
@@ -66,7 +66,7 @@ def debug_info():
         results = cov.analyze()
         file_res = results[script_path]['Statement']
 
-        # Line 4 (def debug_info) should be removed from possible lines
+        # line 4 (def debug_info) should be removed from possible lines
         self.assertNotIn(4, file_res['possible'])
 
     def test_cli_args_passing(self):

@@ -38,7 +38,7 @@ class ConfigLoader:
             'concurrency': 'thread',
             'exclude_lines': set(),
             'data_file': '.coverage.db',
-            'paths': {}  # Map canonical_name -> [list of aliases]
+            'paths': {}  # map canonical_name -> [list of aliases]
         }
 
         # check environment variables for overrides (highest precedence for file location)
@@ -128,7 +128,7 @@ class ConfigLoader:
         if paths_section:
             for option in parser.options(paths_section):
                 val = parser.get(paths_section, option)
-                # Key is the canonical name, Value is list of paths
+                # key is the canonical name, Value is list of paths
                 config['paths'][option] = list(self._parse_list(val))
 
         return True

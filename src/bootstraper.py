@@ -29,7 +29,7 @@ def bootstrap():
             return
 
     try:
-        # we need to ensure src is in path if we are running from source
+        # ensure src is in path if running from source
         # in a real install, this would be handled by pip
         project_root = os.environ.get("MINICOV_ROOT")
         if project_root and project_root not in sys.path:

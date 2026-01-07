@@ -17,11 +17,11 @@ class TestMissingCoverage(unittest.TestCase):
         if sys.version_info < (3, 12):
             self.skipTest("sys.monitoring only available in 3.12+")
 
-        # Mock sys.monitoring.use_tool_id to raise ValueError (simulating failure)
+        # mock sys.monitoring.use_tool_id to raise ValueError (simulating failure)
         with patch('sys.monitoring.use_tool_id', side_effect=ValueError("Mock Failure")):
             with patch('sys.settrace') as mock_settrace:
                 self.cov.start()
-                # Should have tried to settrace as fallback
+                # should have tried to settrace as fallback
                 mock_settrace.assert_called()
         self.cov.stop()
 
@@ -31,12 +31,12 @@ class TestMissingCoverage(unittest.TestCase):
             self.skipTest("sys.monitoring only available in 3.12+")
 
         with patch('sys.monitoring.set_events', side_effect=ValueError("Stop Error")):
-            # Should not raise exception
+            # should not raise exception
             self.cov._stop_sys_monitoring()
 
     def test_storage_save_exception(self):
         """Test that save handles DB exceptions gracefully."""
-        # Add some dummy data so save() proceeds
+        # add some dummy data so save() proceeds
         self.cov.trace_data['lines']['dummy.py'][0].add(1)
 
         with patch('sqlite3.connect', side_effect=Exception("DB Error")):
@@ -51,7 +51,7 @@ class TestMissingCoverage(unittest.TestCase):
                 mock_conn = MagicMock()
                 mock_connect.return_value = mock_conn
 
-                # Only fail on ATTACH, succeed on INIT queries
+                # only fail on ATTACH, succeed on INIT queries
                 def side_effect(query, *args):
                     if "ATTACH DATABASE" in query:
                         raise sqlite3.OperationalError("Locked")
@@ -74,7 +74,7 @@ class TestMissingCoverage(unittest.TestCase):
         """Test the retry logic when deleting partial files."""
         with patch('glob.glob', return_value=['partial.db']):
             with patch('sqlite3.connect'):
-                # 1. Fail twice with OSError, then succeed (return None)
+                # 1. fail twice with OSError, then succeed (return None)
                 with patch('os.remove', side_effect=[OSError("Busy"), OSError("Busy"), None]) as mock_remove:
                     with patch('time.sleep') as mock_sleep:
                         self.cov.storage.combine(lambda x: x)
@@ -84,7 +84,7 @@ class TestMissingCoverage(unittest.TestCase):
     def test_load_into_missing_file(self):
         """Test load_into with non-existent file."""
         self.cov.storage.data_file = "non_existent.db"
-        # Should not raise
+        # should not raise
         self.cov.storage.load_into(self.cov.trace_data)
 
     def test_load_into_operational_error(self):
@@ -98,13 +98,13 @@ class TestMissingCoverage(unittest.TestCase):
     def test_patch_multiprocessing_idempotency(self):
         """Test that _patch_multiprocessing can be called multiple times."""
         self.cov._patch_multiprocessing()
-        # Mock the patched flag
+        # mock the patched flag
         import multiprocessing
         self.assertTrue(hasattr(multiprocessing, '_mini_coverage_patched'))
 
-        # Call again
+        # call again
         self.cov._patch_multiprocessing()
-        # Should still be patched and not crash
+        # should still be patched and not crash
         self.assertTrue(hasattr(multiprocessing, '_mini_coverage_patched'))
 
     def test_run_re_raises_exceptions(self):
@@ -121,21 +121,21 @@ class TestMissingCoverage(unittest.TestCase):
 
     def test_should_trace_exclusions(self):
         """Test _should_trace logic for exclusions."""
-        # Setup config with omit pattern
+        # setup config with omit pattern
         self.cov.config['omit'] = ['vendor/*']
 
-        # Test excluded file
+        # test excluded file
         excluded_path = os.path.normcase(os.path.join(self.cov.project_root, "excluded.py"))
         self.cov.excluded_files.add(excluded_path)
         self.assertFalse(self.cov._should_trace(excluded_path))
 
-        # Test omit pattern
+        # test omit pattern
         vendor_path = os.path.join(self.cov.project_root, "vendor/lib.py")
         self.assertFalse(self.cov._should_trace(vendor_path))
 
-        # Test outside project root
+        # test outside project root
         self.assertFalse(self.cov._should_trace("/tmp/outside.py"))
 
-        # Test valid file
+        # test valid file
         valid_path = os.path.join(self.cov.project_root, "valid.py")
         self.assertTrue(self.cov._should_trace(valid_path))

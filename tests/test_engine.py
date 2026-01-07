@@ -6,7 +6,6 @@ import sqlite3
 import uuid
 from contextlib import closing
 from src.engine import MiniCoverage
-# Import queries to setup DB manually in tests since _init_db is removed
 from src import queries
 from tests.test_utils import BaseTestCase, MockFrame
 
@@ -34,7 +33,7 @@ class TestEngineCore(BaseTestCase):
         filename = os.path.join(self.test_dir, "test.py")
         frame = MockFrame(filename, 10)
         self.cov.trace_function(frame, "line", None)
-        # Default context is 0
+        # default context is 0
         self.assertIn(10, self.cov.trace_data['lines'][filename][0])
 
     def test_trace_function_arc_capture_same_file(self):
@@ -52,7 +51,7 @@ class TestEngineCore(BaseTestCase):
         self.cov.trace_function(MockFrame(f1, 1), "line", None)
         self.cov.trace_function(MockFrame(f2, 1), "line", None)
 
-        # Should NOT link a.py:1 -> b.py:1
+        # should NOT link a.py:1 -> b.py:1
         self.assertEqual(len(self.cov.trace_data['arcs'][f1][0]), 0)
 
         self.cov.trace_function(MockFrame(f2, 2), "line", None)
@@ -84,7 +83,7 @@ class TestEngineCore(BaseTestCase):
         self.assertEqual(len(files), 1)
         db_path = os.path.join(self.test_dir, files[0])
 
-        # Use context manager to ensure close
+        # use context manager to ensure close
         with closing(sqlite3.connect(db_path)) as conn:
             cur = conn.cursor()
             cur.execute("SELECT id, label FROM contexts")
@@ -128,10 +127,10 @@ class TestEngineCore(BaseTestCase):
 
     def test_combine_data_sqlite(self):
         main_db = os.path.join(self.test_dir, ".coverage.db")
-        # Ensure unique partial name to avoid glob mismatch
+        # ensure unique partial name to avoid glob mismatch
         partial_db = f"{main_db}.123.{uuid.uuid4().hex}"
 
-        # Manually create schema since _init_db is removed
+        # manually create schema since _init_db is removed
         with closing(sqlite3.connect(partial_db)) as conn:
             conn.execute(queries.INIT_CONTEXTS)
             conn.execute(queries.INIT_DEFAULT_CONTEXT)
@@ -190,7 +189,7 @@ class TestEngineCore(BaseTestCase):
 
     def test_config_data_file_custom(self):
         self.cov.config['data_file'] = "custom.sqlite"
-        # Update storage instance to reflect new config
+        # update storage instance to reflect new config
         self.cov.storage.data_file = "custom.sqlite"
 
         filename = os.path.join(self.test_dir, "test.py")

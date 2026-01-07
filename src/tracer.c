@@ -23,7 +23,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         if (PyObject_SetAttrString((PyObject*)frame, "f_trace_opcodes", Py_True) < 0) {
             return -1;
         }
-        // Clear history to prevent cross-function arcs
+        // clear history to prevent cross-function arcs
         if (PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None) < 0) return -1;
         if (PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None) < 0) return -1;
         if (PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None) < 0) return -1;
@@ -31,7 +31,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
     }
 
     if (what == PyTrace_RETURN) {
-        // Clear history to prevent cross-function arcs
+        // clear history to prevent cross-function arcs
         if (PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None) < 0) return -1;
         if (PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None) < 0) return -1;
         if (PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None) < 0) return -1;
@@ -91,7 +91,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None);
     }
 
-    // HANDLE LINE EVENT
+    // handle LINE event
     if (what == PyTrace_LINE) {
         int lineno = PyFrame_GetLineNumber(frame);
         PyObject *py_lineno = PyLong_FromLong(lineno);
@@ -135,7 +135,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         Py_DECREF(py_lineno);
     }
 
-    // HANDLE OPCODE EVENT (MC/DC)
+    // handle OPCODE event (MC/DC)
     // track instruction arcs: last_lasti -> current_lasti
     int current_lasti_int = PyFrame_GetLasti(frame);
     PyObject *current_lasti = PyLong_FromLong(current_lasti_int);

@@ -11,7 +11,7 @@ class TestMultiprocessing(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp()
         self.cwd = os.getcwd()
         os.chdir(self.test_dir)
-        # Ensure src is in path for the subprocess
+        # ensure src is in path for the subprocess
         import sys
         self.src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         if self.src_path not in sys.path:
@@ -51,19 +51,19 @@ if __name__ == "__main__":
 
         cov = MiniCoverage(project_root=self.test_dir)
 
-        # Run the script which spawns a subprocess
+        # run the script which spawns a subprocess
         cov.run(script_path)
 
-        # The main process data is in memory, but the child process data
-        # was written to a separate SQLite file. We must combine them.
+        # the main process data is in memory, but the child process data
+        # was written to a separate SQLite file. must combine them.
         cov.combine_data()
 
-        # Reload data to see the combined result
+        # reload data to see the combined result
         lines = cov.trace_data['lines'][script_path][0]
 
-        # Worker function body is lines 5, 6, 7, 8.
-        # If multiprocessing coverage works, these lines must be present.
-        # (Line numbers are approx, checking for existence of the block)
+        # worker function body is lines 5, 6, 7, 8.
+        # if multiprocessing coverage works, these lines must be present.
+        # (line numbers are approx, checking for existence of the block)
         worker_lines_hit = {5, 6, 7, 8}.intersection(lines)
         self.assertTrue(len(worker_lines_hit) > 0, "Child process lines were not captured")
 

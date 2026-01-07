@@ -19,7 +19,7 @@ class BaseTestCase(unittest.TestCase):
 
     def tearDown(self) -> None:
         os.chdir(self.old_cwd)
-        # Fix: ignore_errors=True to prevent Windows file lock crashes
+        # fix: ignore_errors=True to prevent Windows file lock crashes
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def create_file(self, filename, content) -> str:
@@ -54,7 +54,7 @@ class MockFrame:
     def __init__(self, filename, lineno, code_name="<module>"):
         self.f_lineno = lineno
         self.f_code = MockCode(filename, code_name)
-        # Added for Bytecode/MC/DC support
+        # added for Bytecode/MC/DC support
         self.f_lasti = 0
         self.f_trace_opcodes = False
 

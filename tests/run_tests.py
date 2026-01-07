@@ -7,7 +7,7 @@ def run_all_tests() -> None:
     """
     Discover and run all tests in the current directory.
     """
-    # Ensure the project root is in sys.path so src imports work
+    # ensure the project root is in sys.path so src imports work
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if project_root not in sys.path:
         sys.path.insert(0, project_root)

@@ -39,9 +39,9 @@ def my_gen():
 for _ in my_gen():
     pass
 """
-        # Context 0 is default
+        # context 0 is default
         lines = self._run_coverage(code)[0]
-        # Lines 2, 3, 4, 5, 6 should be hit (approximate depending on python version)
+        # lines 2, 3, 4, 5, 6 should be hit (approximate depending on python version)
         self.assertTrue(len(lines) >= 4)
 
     def test_async_await_coverage(self):
@@ -58,11 +58,11 @@ async def main():
 asyncio.run(main())
 """
         lines = self._run_coverage(code)[0]
-        # Ensure lines inside async functions are hit
+        # ensure lines inside async functions are hit
         self.assertTrue(len(lines) > 5)
 
     def test_match_case_coverage(self):
-        # Only run on Python 3.10+
+        # only run on Python 3.10+
         import sys
         if sys.version_info < (3, 10):
             return
@@ -81,10 +81,10 @@ check(1)
 check(3)
 """
         lines = self._run_coverage(code)[0]
-        # We expect hits on the match line, case 1, and case _
+        # expect hits on the match line, case 1, and case _
         # case 2 should be missed
-        # Note: line numbers for match/case vary by Python version,
-        # but we check that we got significant coverage.
+        # note: line numbers for match/case vary by Python version,
+        # but check that we got significant coverage.
         self.assertTrue(len(lines) >= 5)
 
 

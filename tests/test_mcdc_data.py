@@ -37,12 +37,12 @@ decision(True, False)
         with open(script_path, "w") as f:
             f.write(code)
 
-        # Run 1: True, False
+        # run 1: True, False
         cov1 = MiniCoverage(project_root=self.test_dir)
         cov1.run(script_path)
         arcs1 = cov1.trace_data['instruction_arcs'][script_path][0].copy()
 
-        # Run 2: True, True
+        # run 2: True, True
         code2 = """
 def decision(a, b):
     if a and b:
@@ -58,17 +58,17 @@ decision(True, True)
         cov2.run(script_path)
         arcs2 = cov2.trace_data['instruction_arcs'][script_path][0].copy()
 
-        # The sets of bytecode transitions should differ because
+        # the sets of bytecode transitions should differ because
         # the second condition 'b' evaluates differently or the jump targets differ.
-        # In (True, False), 'and' fails, jumping to return False.
-        # In (True, True), 'and' succeeds, entering the block.
+        # in (True, False), 'and' fails, jumping to return False.
+        # in (True, True), 'and' succeeds, entering the block.
         self.assertNotEqual(arcs1, arcs2)
         self.assertTrue(len(arcs1) > 0)
         self.assertTrue(len(arcs2) > 0)
 
     def test_instruction_arcs_exist(self):
-        # Basic sanity check that instruction_arcs are being populated at all
-        # This ensures the C-extension or Python fallback is handling PyTrace_OPCODE
+        # basic sanity check that instruction_arcs are being populated at all
+        # this ensures the C-extension or Python fallback is handling PyTrace_OPCODE
         pass
 
 

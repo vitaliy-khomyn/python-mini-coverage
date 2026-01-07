@@ -121,7 +121,7 @@ class CoverageStorage:
                 conn.commit()
                 cur.execute(f"DETACH DATABASE {alias}")
 
-                # Retry loop for deletion to handle Windows file locking
+                # retry loop for deletion to handle Windows file locking
                 for _ in range(5):
                     try:
                         os.remove(filename)
@@ -148,7 +148,7 @@ class CoverageStorage:
             conn = sqlite3.connect(self.data_file)
             cur = conn.cursor()
 
-            # Helper to normalize paths to prevent duplicates (e.g. relative vs absolute)
+            # helper to normalize paths to prevent duplicates (e.g. relative vs absolute)
             def normalize(p: str) -> str:
                 if os.path.exists(p):
                     return os.path.normcase(os.path.realpath(p))

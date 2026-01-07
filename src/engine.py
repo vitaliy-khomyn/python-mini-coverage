@@ -25,7 +25,7 @@ _OriginalProcess = multiprocessing.Process
 
 
 class CoverageProcess(_OriginalProcess):
-    # Class-level config to support pickling (set by _patch_multiprocessing)
+    # class-level config to support pickling (set by _patch_multiprocessing)
     _subprocess_setup = {"project_root": None, "config_file": None}
 
     def __init__(self, *args, **kwargs):
@@ -74,7 +74,7 @@ class MiniCoverage:
         # structure: {filename: {context_id: {data}}}
         # 'lines': set(lineno)
         # 'arcs': set((start, end))
-        # 'instruction_arcs': set((from_offset, to_offset)) -> New for MC/DC
+        # 'instruction_arcs': set((from_offset, to_offset)) -> new for MC/DC
         self.trace_data: Dict[str, Dict[Any, Any]] = {
             'lines': defaultdict(lambda: defaultdict(set)),
             'arcs': defaultdict(lambda: defaultdict(set)),
@@ -110,7 +110,7 @@ class MiniCoverage:
         self.c_tracer = None
         if minicov_tracer:
             try:
-                # The C tracer takes 'self' (the engine) to access trace_data and caches
+                # the C tracer takes 'self' (the engine) to access trace_data and caches
                 self.c_tracer = minicov_tracer.Tracer(self)
                 self.logger.info("Optimized C Tracer loaded.")
             except Exception as e:
@@ -162,8 +162,8 @@ class MiniCoverage:
             for alias in aliases:
                 norm_alias = os.path.normcase(alias)
                 if path.startswith(norm_alias):
-                    # Replace the alias prefix with the canonical prefix
-                    # We use standard string replacement for simplicity
+                    # replace the alias prefix with the canonical prefix
+                    # use standard string replacement for simplicity
                     return path.replace(norm_alias, canonical, 1)
         return path
 
@@ -171,13 +171,13 @@ class MiniCoverage:
         """
         Merge all partial coverage database files into the main database.
         """
-        # Ensure current data is saved so it's included in the merge
+        # ensure current data is saved so it's included in the merge
         self.save_data()
 
-        # Delegate merge logic to storage, passing the path mapping function
+        # delegate merge logic to storage, passing the path mapping function
         self.storage.combine(self._map_path)
 
-        # Load merged data back into memory for analysis/reporting
+        # load merged data back into memory for analysis/reporting
         self.storage.load_into(self.trace_data)
 
     def _patch_multiprocessing(self) -> None:
@@ -187,7 +187,7 @@ class MiniCoverage:
         Ensures that child processes initialize their own coverage engine,
         collect data, and save it to disk upon exit.
         """
-        # Update global config for new processes
+        # update global config for new processes
         CoverageProcess._subprocess_setup["project_root"] = self.project_root
         CoverageProcess._subprocess_setup["config_file"] = self.config_file
 
@@ -277,7 +277,7 @@ class MiniCoverage:
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code,
                                             sys.monitoring.events.LINE | sys.monitoring.events.BRANCH | sys.monitoring.events.PY_RESUME)
 
-            # Clear history on function entry to prevent cross-function arcs
+            # clear history on function entry to prevent cross-function arcs
             if hasattr(self.thread_local, 'last_line'):
                 self.thread_local.last_line = None
                 self.thread_local.last_lasti = None
@@ -288,7 +288,7 @@ class MiniCoverage:
         """
         sys.monitoring callback for PY_RESUME.
         """
-        # Clear history on function resume to prevent cross-function arcs
+        # clear history on function resume to prevent cross-function arcs
         if hasattr(self.thread_local, 'last_line'):
             self.thread_local.last_line = None
             self.thread_local.last_lasti = None
@@ -342,14 +342,14 @@ class MiniCoverage:
         # enable opcode tracing for this frame
         if event == 'call':
             frame.f_trace_opcodes = True
-            # Clear history to prevent cross-function arcs
+            # clear history to prevent cross-function arcs
             if hasattr(self.thread_local, 'last_line'):
                 self.thread_local.last_line = None
                 self.thread_local.last_lasti = None
             return self.trace_function
 
         if event == 'return':
-            # Clear history to prevent cross-function arcs
+            # clear history to prevent cross-function arcs
             if hasattr(self.thread_local, 'last_line'):
                 self.thread_local.last_line = None
                 self.thread_local.last_lasti = None
@@ -385,7 +385,7 @@ class MiniCoverage:
                 self.thread_local.last_line = lineno
                 self.thread_local.last_file = filename
 
-            # 2. Opcode trace (for MC/DC)
+            # 2. opcode trace (for MC/DC)
             current_lasti = frame.f_lasti
             last_lasti = self.thread_local.last_lasti
 
@@ -407,10 +407,10 @@ class MiniCoverage:
         """
         Determine if a file should be tracked based on project root and exclusions.
         """
-        # Use realpath to ensure consistent behavior across OS environments (canonical paths)
-        # This matches how paths are treated in tests (test_utils uses realpath)
-        # BUT we still use abspath in run() to preserve short paths if passed by user.
-        # This function bridges the gap.
+        # use realpath to ensure consistent behavior across OS environments (canonical paths)
+        # this matches how paths are treated in tests (test_utils uses realpath)
+        # but abspath is still used in run() to preserve short paths if passed by user.
+        # this function bridges the gap.
         abs_path = os.path.realpath(filename)
         # normalize for Windows to handle C:\ vs c:\
         abs_path = os.path.normcase(abs_path)
@@ -421,7 +421,7 @@ class MiniCoverage:
             return False
 
         rel_path = os.path.relpath(abs_path, self.project_root)
-        # Normalize to forward slashes for consistent pattern matching
+        # normalize to forward slashes for consistent pattern matching
         rel_path = rel_path.replace(os.sep, '/')
 
         for pattern in self.config['omit']:
@@ -439,7 +439,7 @@ class MiniCoverage:
         """
         full_results = {}
 
-        # 1. Identify all unique files by normalized path to handle duplicates (raw vs normalized)
+        # 1. identify all unique files by normalized path to handle duplicates (raw vs normalized)
         file_map = defaultdict(list)
         all_raw_files = (
             set(self.trace_data['lines'].keys()) | \
@@ -457,8 +457,8 @@ class MiniCoverage:
         exclude_patterns = self.config.get('exclude_lines', set())
 
         for norm_file, raw_files in file_map.items():
-            # 2. Aggregate data from all raw aliases
-            # Use the first raw file as canonical, preferring existing ones
+            # 2. aggregate data from all raw aliases
+            # use the first raw file as canonical, preferring existing ones
             canonical_filename = raw_files[0]
             for rf in raw_files:
                 if os.path.exists(rf):
@@ -468,25 +468,25 @@ class MiniCoverage:
             if not self._should_trace(canonical_filename):
                 continue
 
-            # Aggregate lines
+            # aggregate lines
             aggregated_lines = set()
             for rf in raw_files:
                 for ctx_lines in self.trace_data['lines'][rf].values():
                     aggregated_lines.update(ctx_lines)
 
-            # Aggregate arcs
+            # aggregate arcs
             aggregated_arcs = set()
             for rf in raw_files:
                 for ctx_arcs in self.trace_data['arcs'][rf].values():
                     aggregated_arcs.update(ctx_arcs)
 
-            # Aggregate instruction arcs
+            # aggregate instruction arcs
             aggregated_instr = set()
             for rf in raw_files:
                 for ctx_instr in self.trace_data['instruction_arcs'][rf].values():
                     aggregated_instr.update(ctx_instr)
 
-            # 3. Parse and Calculate Metrics
+            # 3. parse and calculate metrics
             ast_tree, ignored_lines = self.parser.parse_source(canonical_filename, exclude_patterns)
             if not ast_tree:
                 continue
@@ -505,7 +505,7 @@ class MiniCoverage:
                     possible = metric.get_possible_elements(ast_tree, ignored_lines)
                     executed = aggregated_arcs
                 elif metric.get_name() == "Condition":
-                    # Condition Coverage needs Code Object + Instruction Arcs
+                    # condition coverage needs Code Object + Instruction Arcs
                     possible = metric.get_possible_elements(code_obj, ignored_lines)  # type: ignore
                     executed = aggregated_instr
 
@@ -524,8 +524,8 @@ class MiniCoverage:
             script_path (str): Path to the script to execute.
             script_args (list): List of command-line arguments to pass to the script.
         """
-        # Normalize path for consistency, but use abspath to respect user input format (e.g. short paths)
-        # This fixes KeyError issues where test runner uses short paths but we forced realpath previously.
+        # normalize path for consistency, but use abspath to respect user input format (e.g. short paths)
+        # this fixes KeyError issues where test runner uses short paths but forced realpath previously.
         abs_script_path = os.path.abspath(script_path)
         script_dir = os.path.dirname(abs_script_path)
 
@@ -535,12 +535,12 @@ class MiniCoverage:
         sys.argv = [script_path] + (script_args if script_args else [])
         sys.path.insert(0, script_dir)
 
-        # Create a module for the script to support multiprocessing pickling
+        # create a module for the script to support multiprocessing pickling
         main_mod = types.ModuleType("__main__")
         main_mod.__file__ = abs_script_path
         main_mod.__builtins__ = __builtins__
 
-        # Backup existing __main__
+        # backup existing __main__
         old_main = sys.modules['__main__']
         sys.modules['__main__'] = main_mod
 
@@ -550,7 +550,7 @@ class MiniCoverage:
 
             self.start()
 
-            # Execute code within the new module namespace
+            # execute code within the new module namespace
             exec(code, main_mod.__dict__)
 
         except SystemExit as e:

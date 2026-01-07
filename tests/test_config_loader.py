@@ -49,7 +49,8 @@ class ConfigLoader:
         candidates = [config_file] if config_file else ['pyproject.toml', '.coveragerc', 'setup.cfg', 'tox.ini']
 
         for cand in candidates:
-            if not cand: continue
+            if not cand:
+                continue
             path = os.path.join(project_root, cand)
             if not os.path.exists(path):
                 continue

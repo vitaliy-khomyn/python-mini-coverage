@@ -48,10 +48,10 @@ INSERT_LINE = "INSERT OR IGNORE INTO lines (file_path, context_id, line_no) VALU
 INSERT_ARC = "INSERT OR IGNORE INTO arcs (file_path, context_id, start_line, end_line) VALUES (?, ?, ?, ?)"
 INSERT_INSTRUCTION_ARC = "INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, from_offset, to_offset) VALUES (?, ?, ?, ?)"
 
-# Dynamic queries (format strings)
+# dynamic queries (format strings)
 MERGE_CONTEXTS = "INSERT OR IGNORE INTO contexts (label) SELECT label FROM {alias}.contexts"
 
-# Updated to use remap_path function
+# updated to use remap_path function
 MERGE_LINES = """
     INSERT OR IGNORE INTO lines (file_path, context_id, line_no)
     SELECT remap_path(l.file_path), main_c.id, l.line_no

@@ -1,4 +1,4 @@
-import unittest
+import unittest  # noqa: F401
 import ast
 import os
 import textwrap
@@ -72,11 +72,11 @@ class TestSourceParser(BaseTestCase):
         with open(path, 'wb') as f:
             f.write(b"# -*- coding: latin-1 -*-\nx = '\xe9'")  # é
 
-        # Parser assumes utf-8 by default but compile might handle magic comment
-        # Our parse_source opens with utf-8, so it might fail or replace.
+        # parser assumes utf-8 by default but compile might handle magic comment
+        # parse_source opens with utf-8, so it might fail or replace.
         # compile_source uses default open, which respects coding header if passed to compile?
-        # Actually our implementation uses open(encoding='utf-8') which will fail for strict latin-1 chars not in utf-8.
-        # This tests graceful failure.
+        # actually implementation uses open(encoding='utf-8') which will fail for strict latin-1 chars not in utf-8.
+        # this tests graceful failure.
         tree, _ = self.parser.parse_source(path)
-        # Should return None due to UnicodeDecodeError
+        # should return None due to UnicodeDecodeError
         self.assertIsNone(tree)
