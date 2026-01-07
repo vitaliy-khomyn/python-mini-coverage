@@ -2,6 +2,7 @@ import sys
 import os
 import unittest
 import importlib
+import multiprocessing
 
 # Ensure the project root is in sys.path so we can import 'src'
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +33,12 @@ def main():
     # However, the engine's fallback logic (sys.settrace) usually handles this gracefully.
     cov.start()
 
+    # Temporarily unpatch multiprocessing.Process so that when src.engine is reloaded,
+    # the new CoverageProcess inherits from the original Process, not the patched one.
+    engine_module = sys.modules.get('src.engine')
+    if engine_module and hasattr(engine_module, '_OriginalProcess'):
+        multiprocessing.Process = engine_module._OriginalProcess
+
     # Reload 'src' modules to capture top-level definitions (imports, classes, decorators)
     # that were executed before coverage started.
     print("Reloading modules to capture definition coverage...")
@@ -45,6 +52,16 @@ def main():
             importlib.reload(module)
         except Exception as e:
             print(f"Warning: Failed to reload {module.__name__}: {e}")
+
+    # Re-patch multiprocessing with the reloaded CoverageProcess class
+    # This prevents PicklingError due to class identity mismatch
+    engine_module = sys.modules.get('src.engine')
+    if engine_module and hasattr(engine_module, 'CoverageProcess'):
+        multiprocessing.Process = engine_module.CoverageProcess
+        # Restore config which was reset by reload
+        if hasattr(engine_module, '_subprocess_config'):
+            engine_module._subprocess_config["project_root"] = cov.project_root
+            engine_module._subprocess_config["config_file"] = cov.config_file
 
     success = False
     try:
