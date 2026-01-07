@@ -37,7 +37,13 @@ Once tests have been run, human-readable reports can be generated. The report co
 python \-m src.main report
 
 This will output a text summary to the terminal and generate a static HTML website in the htmlcov directory. htmlcov/index.html can be opened in any browser to explore the source code with color-coded highlighting showing exactly which lines and branches were missed.  
-For integration with CI/CD systems like Jenkins or Codecov, coverage.xml (Cobertura format) and coverage.json are also automatically generated.
+
+You can specify output formats using the `--format` flag:
+```commandline
+python -m src.main report --format console html xml json
+```
+
+For integration with CI/CD systems like Jenkins or Codecov, `xml` (Cobertura format) and `json` formats are available.
 
 ## **Configuration**
 
