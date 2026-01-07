@@ -5,7 +5,7 @@ import sqlite3
 import time  # noqa: F401
 from unittest.mock import MagicMock, patch, ANY  # noqa: F401
 from src.engine import MiniCoverage
-from src.storage import CoverageStorage  # noqa: F401
+from src.engine.storage import CoverageStorage  # noqa: F401
 
 
 class TestMissingCoverage(unittest.TestCase):
@@ -40,7 +40,7 @@ class TestMissingCoverage(unittest.TestCase):
         self.cov.trace_data['lines']['dummy.py'][0].add(1)
 
         with patch('sqlite3.connect', side_effect=Exception("DB Error")):
-            with self.assertLogs('src.storage', level='ERROR') as cm:
+            with self.assertLogs('src.engine.storage', level='ERROR') as cm:
                 self.cov.storage.save(self.cov.trace_data, self.cov.context_cache)
                 self.assertTrue(any("Failed to save coverage data" in o for o in cm.output))
 
@@ -58,7 +58,7 @@ class TestMissingCoverage(unittest.TestCase):
                     return MagicMock()
                 mock_conn.cursor.return_value.execute.side_effect = side_effect
 
-                with self.assertLogs('src.storage', level='DEBUG') as cm:
+                with self.assertLogs('src.engine.storage', level='DEBUG') as cm:
                     self.cov.storage.combine(lambda x: x)
                     self.assertTrue(any("Skipping locked/corrupt" in o for o in cm.output))
 
@@ -66,7 +66,7 @@ class TestMissingCoverage(unittest.TestCase):
         """Test that combine handles generic exceptions."""
         with patch('glob.glob', return_value=['partial.db']):
             with patch('sqlite3.connect', side_effect=Exception("Boom")):
-                with self.assertLogs('src.storage', level='ERROR') as cm:
+                with self.assertLogs('src.engine.storage', level='ERROR') as cm:
                     self.cov.storage.combine(lambda x: x)
                     self.assertTrue(any("Error combining" in o for o in cm.output))
 
@@ -91,7 +91,7 @@ class TestMissingCoverage(unittest.TestCase):
         """Test load_into with corrupt DB."""
         with patch('os.path.exists', return_value=True):
             with patch('sqlite3.connect', side_effect=sqlite3.OperationalError("Corrupt")):
-                with self.assertLogs('src.storage', level='DEBUG') as cm:
+                with self.assertLogs('src.engine.storage', level='DEBUG') as cm:
                     self.cov.storage.load_into(self.cov.trace_data, self.cov.path_manager)
                     self.assertTrue(any("OperationalError loading" in o for o in cm.output))
 

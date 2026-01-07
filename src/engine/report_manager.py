@@ -1,9 +1,9 @@
 from typing import List
-from .reporters.base import AnalysisResults
-from .reporters.console import ConsoleReporter
-from .reporters.html import HtmlReporter
-from .reporters.xml import XmlReporter
-from .reporters.json import JsonReporter
+from ..reporters.base import AnalysisResults
+from ..reporters.console import ConsoleReporter
+from ..reporters.html import HtmlReporter
+from ..reporters.xml import XmlReporter
+from ..reporters.json import JsonReporter
 
 
 class ReportManager:

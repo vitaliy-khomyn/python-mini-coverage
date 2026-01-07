@@ -16,13 +16,13 @@ except ImportError:
 from .config import CoverageConfig
 from .report_manager import ReportManager
 from .analyzer import Analyzer
-from .tracing.sys_monitoring import SysMonitoringTracer
-from .tracing.sys_settrace import SysSetTraceTracer
+from ..tracing.sys_monitoring import SysMonitoringTracer
+from ..tracing.sys_settrace import SysSetTraceTracer
 from .trace_data import TraceContainer
 from .path_manager import PathManager
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
-from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage
+from ..metrics import StatementCoverage, BranchCoverage, ConditionCoverage
 from .storage import CoverageStorage
 
 _OriginalProcess = multiprocessing.Process

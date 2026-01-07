@@ -6,7 +6,7 @@ import sqlite3
 import uuid
 from contextlib import closing
 from src.engine import MiniCoverage
-from src import queries
+from src.engine import queries
 from tests.test_utils import BaseTestCase, MockFrame
 
 

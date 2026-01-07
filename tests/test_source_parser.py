@@ -3,7 +3,7 @@ import ast
 import os
 import textwrap
 import types
-from src.source_parser import SourceParser
+from src.engine.source_parser import SourceParser
 from tests.test_utils import BaseTestCase
 
 

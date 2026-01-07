@@ -5,9 +5,9 @@ import types
 import ast
 from unittest.mock import MagicMock, patch
 from src.engine import MiniCoverage
-from src.config_loader import ConfigLoader
-from src.config import CoverageConfig
-from src.source_parser import SourceParser
+from src.engine.config_loader import ConfigLoader
+from src.engine.config import CoverageConfig
+from src.engine.source_parser import SourceParser
 
 
 class TestBranchCoverage(unittest.TestCase):
@@ -124,7 +124,7 @@ class TestBranchCoverage(unittest.TestCase):
 
         try:
             patterns = ["(unclosed group"]
-            with self.assertLogs('src.source_parser', level='DEBUG') as cm:
+            with self.assertLogs('src.engine.source_parser', level='DEBUG') as cm:
                 parser.parse_source("dummy.py", exclude_patterns=patterns)
                 self.assertTrue(any("Invalid regex pattern" in o for o in cm.output))
         finally:

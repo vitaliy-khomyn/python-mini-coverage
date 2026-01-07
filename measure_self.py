@@ -35,7 +35,7 @@ def main():
 
     # temporarily unpatch multiprocessing.Process so that when src.engine is reloaded,
     # the new CoverageProcess inherits from the original Process, not the patched one.
-    engine_module = sys.modules.get('src.engine')
+    engine_module = sys.modules.get('src.engine.core')
     if engine_module and hasattr(engine_module, '_OriginalProcess'):
         multiprocessing.Process = engine_module._OriginalProcess
         if hasattr(multiprocessing, '_mini_coverage_patched'):
@@ -57,7 +57,7 @@ def main():
 
     # re-patch multiprocessing with the reloaded CoverageProcess class
     # this prevents PicklingError due to class identity mismatch
-    engine_module = sys.modules.get('src.engine')
+    engine_module = sys.modules.get('src.engine.core')
     if engine_module and hasattr(engine_module, 'CoverageProcess'):
         multiprocessing.Process = engine_module.CoverageProcess
         # restore config which was reset by reload
