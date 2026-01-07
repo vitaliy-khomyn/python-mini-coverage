@@ -23,6 +23,18 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         if (PyObject_SetAttrString((PyObject*)frame, "f_trace_opcodes", Py_True) < 0) {
             return -1;
         }
+        // Clear history to prevent cross-function arcs
+        if (PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None) < 0) return -1;
+        if (PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None) < 0) return -1;
+        if (PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None) < 0) return -1;
+        return 0;
+    }
+
+    if (what == PyTrace_RETURN) {
+        // Clear history to prevent cross-function arcs
+        if (PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None) < 0) return -1;
+        if (PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None) < 0) return -1;
+        if (PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None) < 0) return -1;
         return 0;
     }
 

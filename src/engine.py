@@ -21,16 +21,17 @@ from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage
 from .reporters import ConsoleReporter, HtmlReporter, XmlReporter, JsonReporter, BaseReporter
 from .storage import CoverageStorage
 
-# global state to support pickling of the custom Process class
-_subprocess_config = {"project_root": None, "config_file": None}
 _OriginalProcess = multiprocessing.Process
 
 
 class CoverageProcess(_OriginalProcess):
+    # Class-level config to support pickling (set by _patch_multiprocessing)
+    _subprocess_setup = {"project_root": None, "config_file": None}
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._cov_project_root = _subprocess_config["project_root"]
-        self._cov_config_file = _subprocess_config["config_file"]
+        self._cov_project_root = self._subprocess_setup["project_root"]
+        self._cov_config_file = self._subprocess_setup["config_file"]
 
     def run(self) -> None:
         if self._cov_project_root:
@@ -170,6 +171,9 @@ class MiniCoverage:
         """
         Merge all partial coverage database files into the main database.
         """
+        # Ensure current data is saved so it's included in the merge
+        self.save_data()
+
         # Delegate merge logic to storage, passing the path mapping function
         self.storage.combine(self._map_path)
 
@@ -184,8 +188,8 @@ class MiniCoverage:
         collect data, and save it to disk upon exit.
         """
         # Update global config for new processes
-        _subprocess_config["project_root"] = self.project_root
-        _subprocess_config["config_file"] = self.config_file
+        CoverageProcess._subprocess_setup["project_root"] = self.project_root
+        CoverageProcess._subprocess_setup["config_file"] = self.config_file
 
         if hasattr(multiprocessing, '_mini_coverage_patched'):
             return
@@ -264,11 +268,9 @@ class MiniCoverage:
         Determines if a code object should be traced.
         """
         filename = code.co_filename
-        # normalize path for comparison (handling short/long/casing)
-        abs_filename = os.path.normcase(os.path.realpath(filename))
 
         if filename not in self._cache_traceable:
-            self._cache_traceable[filename] = self._should_trace(abs_filename)
+            self._cache_traceable[filename] = self._should_trace(filename)
 
         if self._cache_traceable[filename]:
             # enable LINE and BRANCH events for this code object
@@ -419,6 +421,9 @@ class MiniCoverage:
             return False
 
         rel_path = os.path.relpath(abs_path, self.project_root)
+        # Normalize to forward slashes for consistent pattern matching
+        rel_path = rel_path.replace(os.sep, '/')
+
         for pattern in self.config['omit']:
             if fnmatch.fnmatch(rel_path, pattern):
                 return False
@@ -433,20 +438,60 @@ class MiniCoverage:
             dict: A mapping of filenames to metric statistics.
         """
         full_results = {}
-        all_files = set(self.trace_data['lines'].keys()) | set(self.trace_data['arcs'].keys())
+
+        # 1. Identify all unique files by normalized path to handle duplicates (raw vs normalized)
+        file_map = defaultdict(list)
+        all_raw_files = (
+            set(self.trace_data['lines'].keys()) | \
+            set(self.trace_data['arcs'].keys()) | \
+            set(self.trace_data['instruction_arcs'].keys())
+        )
+
+        for f in all_raw_files:
+            if os.path.exists(f):
+                norm = os.path.normcase(os.path.realpath(f))
+            else:
+                norm = os.path.normcase(f)
+            file_map[norm].append(f)
 
         exclude_patterns = self.config.get('exclude_lines', set())
 
-        for filename in all_files:
-            # re-verify traceability with normalized paths to avoid processing artifacts
-            if not self._should_trace(filename):
+        for norm_file, raw_files in file_map.items():
+            # 2. Aggregate data from all raw aliases
+            # Use the first raw file as canonical, preferring existing ones
+            canonical_filename = raw_files[0]
+            for rf in raw_files:
+                if os.path.exists(rf):
+                    canonical_filename = rf
+                    break
+
+            if not self._should_trace(canonical_filename):
                 continue
 
-            ast_tree, ignored_lines = self.parser.parse_source(filename, exclude_patterns)
+            # Aggregate lines
+            aggregated_lines = set()
+            for rf in raw_files:
+                for ctx_lines in self.trace_data['lines'][rf].values():
+                    aggregated_lines.update(ctx_lines)
+
+            # Aggregate arcs
+            aggregated_arcs = set()
+            for rf in raw_files:
+                for ctx_arcs in self.trace_data['arcs'][rf].values():
+                    aggregated_arcs.update(ctx_arcs)
+
+            # Aggregate instruction arcs
+            aggregated_instr = set()
+            for rf in raw_files:
+                for ctx_instr in self.trace_data['instruction_arcs'][rf].values():
+                    aggregated_instr.update(ctx_instr)
+
+            # 3. Parse and Calculate Metrics
+            ast_tree, ignored_lines = self.parser.parse_source(canonical_filename, exclude_patterns)
             if not ast_tree:
                 continue
 
-            code_obj = self.parser.compile_source(filename)
+            code_obj = self.parser.compile_source(canonical_filename)
 
             file_results = {}
             for metric in self.metrics:
@@ -455,22 +500,19 @@ class MiniCoverage:
 
                 if metric.get_name() == "Statement":
                     possible = metric.get_possible_elements(ast_tree, ignored_lines)
-                    for ctx_lines in self.trace_data['lines'][filename].values():
-                        executed.update(ctx_lines)
+                    executed = aggregated_lines
                 elif metric.get_name() == "Branch":
                     possible = metric.get_possible_elements(ast_tree, ignored_lines)
-                    for ctx_arcs in self.trace_data['arcs'][filename].values():
-                        executed.update(ctx_arcs)
+                    executed = aggregated_arcs
                 elif metric.get_name() == "Condition":
                     # Condition Coverage needs Code Object + Instruction Arcs
                     possible = metric.get_possible_elements(code_obj, ignored_lines)  # type: ignore
-                    for ctx_instr in self.trace_data['instruction_arcs'][filename].values():
-                        executed.update(ctx_instr)
+                    executed = aggregated_instr
 
                 stats = metric.calculate_stats(possible, executed)
                 file_results[metric.get_name()] = stats
 
-            full_results[filename] = file_results
+            full_results[canonical_filename] = file_results
 
         return full_results
 

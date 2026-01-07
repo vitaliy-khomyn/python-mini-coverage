@@ -38,6 +38,8 @@ def main():
     engine_module = sys.modules.get('src.engine')
     if engine_module and hasattr(engine_module, '_OriginalProcess'):
         multiprocessing.Process = engine_module._OriginalProcess
+        if hasattr(multiprocessing, '_mini_coverage_patched'):
+            del multiprocessing._mini_coverage_patched
 
     # Reload 'src' modules to capture top-level definitions (imports, classes, decorators)
     # that were executed before coverage started.
@@ -59,9 +61,9 @@ def main():
     if engine_module and hasattr(engine_module, 'CoverageProcess'):
         multiprocessing.Process = engine_module.CoverageProcess
         # Restore config which was reset by reload
-        if hasattr(engine_module, '_subprocess_config'):
-            engine_module._subprocess_config["project_root"] = cov.project_root
-            engine_module._subprocess_config["config_file"] = cov.config_file
+        if hasattr(engine_module.CoverageProcess, '_subprocess_setup'):
+            engine_module.CoverageProcess._subprocess_setup["project_root"] = cov.project_root
+            engine_module.CoverageProcess._subprocess_setup["config_file"] = cov.config_file
 
     success = False
     try:

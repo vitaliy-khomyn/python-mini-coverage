@@ -3,6 +3,7 @@ import sqlite3
 import logging
 import glob
 import uuid
+import time
 from typing import Dict, Any, Callable
 from . import queries
 
@@ -88,7 +89,12 @@ class CoverageStorage:
         """
         Merge all partial coverage database files into the main database.
         """
-        conn = self._init_db(self.data_file)
+        try:
+            conn = self._init_db(self.data_file)
+        except Exception as e:
+            self.logger.error(f"Error combining main database {self.data_file}: {e}")
+            return
+
         # register the path mapping function for use in SQL queries
         conn.create_function("remap_path", 1, map_path_func)
         cur = conn.cursor()
@@ -114,7 +120,14 @@ class CoverageStorage:
 
                 conn.commit()
                 cur.execute(f"DETACH DATABASE {alias}")
-                os.remove(filename)
+
+                # Retry loop for deletion to handle Windows file locking
+                for _ in range(5):
+                    try:
+                        os.remove(filename)
+                        break
+                    except OSError:
+                        time.sleep(0.1)
             except sqlite3.OperationalError as e:
                 # happens if file is locked or corrupt
                 self.logger.debug(f"Skipping locked/corrupt partial file {filename}: {e}")
