@@ -17,8 +17,9 @@ class TestBranchCoverage(unittest.TestCase):
         """Test _map_path with configured aliases."""
         # setup config with paths
         # use normcase to ensure the test works on both Windows and Linux
-        src_alias = os.path.normcase("/w/source/")
-        src_canonical = os.path.normcase("/src/")
+        # use abspath to match PathManager.canonicalize behavior (handling drive letters)
+        src_alias = os.path.normcase(os.path.abspath("/w/source/"))
+        src_canonical = os.path.normcase(os.path.abspath("/src/"))
 
         self.cov.config['paths'] = {
             src_canonical: [src_alias]
@@ -28,14 +29,14 @@ class TestBranchCoverage(unittest.TestCase):
         with patch('os.path.exists', return_value=False):
             # case 1: match found
             input_path = os.path.join(src_alias, "file.py")
-            mapped = self.cov._map_path(input_path)
+            mapped = self.cov.path_manager.map_path(input_path)
 
             expected = os.path.join(src_canonical, "file.py")
             self.assertEqual(mapped, expected)
 
             # case 2: no match
-            nomatch_path = os.path.normcase("/nomatch/file.py")
-            mapped = self.cov._map_path(nomatch_path)
+            nomatch_path = os.path.normcase(os.path.abspath("/nomatch/file.py"))
+            mapped = self.cov.path_manager.map_path(nomatch_path)
             self.assertEqual(mapped, nomatch_path)
 
     def test_monitor_py_start_negative(self):
@@ -53,7 +54,7 @@ class TestBranchCoverage(unittest.TestCase):
         code = MagicMock(spec=types.CodeType)
         code.co_filename = "excluded.py"
 
-        with patch.object(self.cov, '_should_trace', return_value=False):
+        with patch.object(self.cov.path_manager, 'should_trace', return_value=False):
             with patch('sys.monitoring.set_local_events') as mock_set:
                 self.cov._monitor_py_start(code, 0)
                 # should call set_local_events with 0 (disable)
@@ -149,13 +150,14 @@ class TestBranchCoverage(unittest.TestCase):
 
                     self.cov.parser.parse_source = MagicMock(return_value=(real_ast, set()))
                     self.cov.parser.compile_source = MagicMock(return_value=real_code)
-                    self.cov._should_trace = MagicMock(return_value=True)
+                    # Mock path_manager.should_trace as Analyzer uses it now
+                    self.cov.path_manager.should_trace = MagicMock(return_value=True)
 
-                    # run analyze
+                    # Run analyze
                     results = self.cov.analyze()
 
-                    # check if lines were merged (1 and 2)
-                    # the canonical filename chosen depends on set iteration order of raw files
+                    # Check if lines were merged (1 and 2)
+                    # The canonical filename chosen depends on set iteration order of raw files
                     self.assertEqual(len(results), 1)
                     result_key = list(results.keys())[0]
                     stmt_stats = results[result_key]["Statement"]

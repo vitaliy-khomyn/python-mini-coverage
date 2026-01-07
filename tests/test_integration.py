@@ -22,7 +22,8 @@ if __name__ == "__main__":
             cov.run(script_path)
 
         results = cov.analyze()
-        stmt = results[script_path]['Statement']
+        norm_path = os.path.normcase(os.path.realpath(script_path))
+        stmt = results[norm_path]['Statement']
         self.assertGreater(len(stmt['executed']), 0)
 
         cov.report()
@@ -43,7 +44,8 @@ t.join()
             cov.run(script_path)
 
         results = cov.analyze()
-        stmt = results[script_path]['Statement']
+        norm_path = os.path.normcase(os.path.realpath(script_path))
+        stmt = results[norm_path]['Statement']
         self.assertTrue(any(line == 4 for line in stmt['executed']))
 
     def test_configuration_exclusion(self):
@@ -64,7 +66,8 @@ def debug_info():
             cov.run(script_path)
 
         results = cov.analyze()
-        file_res = results[script_path]['Statement']
+        norm_path = os.path.normcase(os.path.realpath(script_path))
+        file_res = results[norm_path]['Statement']
 
         # line 4 (def debug_info) should be removed from possible lines
         self.assertNotIn(4, file_res['possible'])
@@ -81,4 +84,5 @@ if len(sys.argv) > 1 and sys.argv[1] == 'foo':
             cov.run(script_path, script_args=['foo'])
 
         results = cov.analyze()
-        self.assertIn(4, results[script_path]['Statement']['executed'])
+        norm_path = os.path.normcase(os.path.realpath(script_path))
+        self.assertIn(4, results[norm_path]['Statement']['executed'])

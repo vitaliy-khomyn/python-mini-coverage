@@ -40,7 +40,8 @@ decision(True, False)
         # run 1: True, False
         cov1 = MiniCoverage(project_root=self.test_dir)
         cov1.run(script_path)
-        arcs1 = cov1.trace_data['instruction_arcs'][script_path][0].copy()
+        canonical_path = cov1.path_manager.canonicalize(script_path)
+        arcs1 = cov1.trace_data['instruction_arcs'][canonical_path][0].copy()
 
         # run 2: True, True
         code2 = """
@@ -56,7 +57,7 @@ decision(True, True)
 
         cov2 = MiniCoverage(project_root=self.test_dir)
         cov2.run(script_path)
-        arcs2 = cov2.trace_data['instruction_arcs'][script_path][0].copy()
+        arcs2 = cov2.trace_data['instruction_arcs'][canonical_path][0].copy()
 
         # the sets of bytecode transitions should differ because
         # the second condition 'b' evaluates differently or the jump targets differ.

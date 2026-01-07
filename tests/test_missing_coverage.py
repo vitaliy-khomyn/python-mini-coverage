@@ -85,14 +85,14 @@ class TestMissingCoverage(unittest.TestCase):
         """Test load_into with non-existent file."""
         self.cov.storage.data_file = "non_existent.db"
         # should not raise
-        self.cov.storage.load_into(self.cov.trace_data)
+        self.cov.storage.load_into(self.cov.trace_data, self.cov.path_manager)
 
     def test_load_into_operational_error(self):
         """Test load_into with corrupt DB."""
         with patch('os.path.exists', return_value=True):
             with patch('sqlite3.connect', side_effect=sqlite3.OperationalError("Corrupt")):
                 with self.assertLogs('src.storage', level='DEBUG') as cm:
-                    self.cov.storage.load_into(self.cov.trace_data)
+                    self.cov.storage.load_into(self.cov.trace_data, self.cov.path_manager)
                     self.assertTrue(any("OperationalError loading" in o for o in cm.output))
 
     def test_patch_multiprocessing_idempotency(self):
@@ -127,15 +127,15 @@ class TestMissingCoverage(unittest.TestCase):
         # test excluded file
         excluded_path = os.path.normcase(os.path.join(self.cov.project_root, "excluded.py"))
         self.cov.excluded_files.add(excluded_path)
-        self.assertFalse(self.cov._should_trace(excluded_path))
+        self.assertFalse(self.cov.path_manager.should_trace(excluded_path, self.cov.excluded_files))
 
         # test omit pattern
         vendor_path = os.path.join(self.cov.project_root, "vendor/lib.py")
-        self.assertFalse(self.cov._should_trace(vendor_path))
+        self.assertFalse(self.cov.path_manager.should_trace(vendor_path, self.cov.excluded_files))
 
         # test outside project root
-        self.assertFalse(self.cov._should_trace("/tmp/outside.py"))
+        self.assertFalse(self.cov.path_manager.should_trace("/tmp/outside.py", self.cov.excluded_files))
 
         # test valid file
         valid_path = os.path.join(self.cov.project_root, "valid.py")
-        self.assertTrue(self.cov._should_trace(valid_path))
+        self.assertTrue(self.cov.path_manager.should_trace(valid_path, self.cov.excluded_files))

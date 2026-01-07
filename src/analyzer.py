@@ -1,6 +1,6 @@
 import os
 from collections import defaultdict
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Set
 
 
 class Analyzer:
@@ -9,11 +9,12 @@ class Analyzer:
     to calculate coverage metrics.
     """
 
-    def __init__(self, parser, metrics, config: Dict[str, Any], should_trace_func: Callable[[str], bool]):
+    def __init__(self, parser, metrics, config: Dict[str, Any], path_manager, excluded_files: Set[str]):
         self.parser = parser
         self.metrics = metrics
         self.config = config
-        self.should_trace = should_trace_func
+        self.path_manager = path_manager
+        self.excluded_files = excluded_files
 
     def analyze(self, trace_data: Dict[str, Dict[Any, Any]]) -> Dict[str, Dict[str, Any]]:
         """
@@ -36,10 +37,7 @@ class Analyzer:
         )
 
         for f in all_raw_files:
-            if os.path.exists(f):
-                norm = os.path.normcase(os.path.realpath(f))
-            else:
-                norm = os.path.normcase(f)
+            norm = self.path_manager.canonicalize(f)
             file_map[norm].append(f)
 
         exclude_patterns = self.config.get('exclude_lines', set())
@@ -53,7 +51,7 @@ class Analyzer:
                     canonical_filename = rf
                     break
 
-            if not self.should_trace(canonical_filename):
+            if not self.path_manager.should_trace(canonical_filename, self.excluded_files):
                 continue
 
             # aggregate lines

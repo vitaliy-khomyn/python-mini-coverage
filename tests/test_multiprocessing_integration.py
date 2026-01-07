@@ -59,7 +59,8 @@ if __name__ == "__main__":
         cov.combine_data()
 
         # reload data to see the combined result
-        lines = cov.trace_data['lines'][script_path][0]
+        canonical_path = cov.path_manager.canonicalize(script_path)
+        lines = cov.trace_data['lines'][canonical_path][0]
 
         # worker function body is lines 5, 6, 7, 8.
         # if multiprocessing coverage works, these lines must be present.

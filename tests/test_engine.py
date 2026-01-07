@@ -22,12 +22,12 @@ class TestEngineCore(BaseTestCase):
 
     def test_should_trace_filters(self):
         in_project = os.path.join(self.test_dir, "script.py")
-        self.assertTrue(self.cov._should_trace(in_project))
+        self.assertTrue(self.cov.path_manager.should_trace(in_project, self.cov.excluded_files))
 
         outside = "/tmp/other.py"
-        self.assertFalse(self.cov._should_trace(outside))
+        self.assertFalse(self.cov.path_manager.should_trace(outside, self.cov.excluded_files))
 
-        self.assertFalse(self.cov._should_trace(__file__))
+        self.assertFalse(self.cov.path_manager.should_trace(__file__, self.cov.excluded_files))
 
     def test_trace_function_line_capture(self):
         filename = os.path.join(self.test_dir, "test.py")

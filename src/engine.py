@@ -3,7 +3,6 @@ import os
 import logging
 import threading
 import multiprocessing
-import fnmatch
 import types
 
 from collections import defaultdict
@@ -16,6 +15,7 @@ except ImportError:
     minicov_tracer = None
 
 from .analyzer import Analyzer
+from .path_manager import PathManager
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
 from .metrics import StatementCoverage, BranchCoverage, ConditionCoverage
@@ -58,19 +58,17 @@ class MiniCoverage:
         self.logger = logging.getLogger(__name__)
 
         cwd = os.getcwd()
-        if project_root:
-            # use realpath to ensure having the canonical path (resolves symlinks and etc)
-            self.project_root = os.path.realpath(project_root)
-        else:
-            self.project_root = os.path.realpath(cwd)
-
-        # normalize for case-insensitive systems (Windows)
-        self.project_root = os.path.normcase(self.project_root)
+        root = project_root if project_root else cwd
 
         self.config_file = config_file
-
         self.config_loader = ConfigLoader()
+
+        # initialize PathManager early to handle root normalization
+        # note: config is loaded with the raw root first, then PathManager canonicalizes it
+        self.path_manager = PathManager(root, {})
+        self.project_root = self.path_manager.project_root
         self.config: Dict[str, Any] = self.config_loader.load_config(self.project_root, config_file)
+        self.path_manager.config = self.config
 
         # structure: {filename: {context_id: {data}}}
         # 'lines': set(lineno)
@@ -93,7 +91,9 @@ class MiniCoverage:
 
         self.parser = SourceParser()
         self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage()]
-        self.analyzer = Analyzer(self.parser, self.metrics, self.config, self._should_trace)
+        # ensure excluded files are also normalized
+        self.excluded_files: Set[str] = set()
+        self.analyzer = Analyzer(self.parser, self.metrics, self.config, self.path_manager, self.excluded_files)
 
         self.reporters: List[BaseReporter] = [
             ConsoleReporter(),
@@ -103,9 +103,6 @@ class MiniCoverage:
         ]
 
         self._cache_traceable: Dict[str, bool] = {}
-        # ensure excluded files are also normalized
-        # self.excluded_files: Set[str] = {os.path.normcase(os.path.realpath(__file__))}
-        self.excluded_files: Set[str] = set()
         self.thread_local = threading.local()
 
         # initialize C Tracer if available
@@ -150,25 +147,6 @@ class MiniCoverage:
         """
         self.storage.save(self.trace_data, self.context_cache)
 
-    def _map_path(self, path: str) -> str:
-        """
-        Remap a file path based on the [paths] configuration.
-        Returns the canonical path if a match is found, otherwise the original.
-        """
-        # try to resolve to absolute path first to help merging
-        if os.path.exists(path):
-            path = os.path.realpath(path)
-
-        path = os.path.normcase(path)
-        for canonical, aliases in self.config.get('paths', {}).items():
-            for alias in aliases:
-                norm_alias = os.path.normcase(alias)
-                if path.startswith(norm_alias):
-                    # replace the alias prefix with the canonical prefix
-                    # use standard string replacement for simplicity
-                    return path.replace(norm_alias, canonical, 1)
-        return path
-
     def combine_data(self) -> None:
         """
         Merge all partial coverage database files into the main database.
@@ -177,10 +155,10 @@ class MiniCoverage:
         self.save_data()
 
         # delegate merge logic to storage, passing the path mapping function
-        self.storage.combine(self._map_path)
+        self.storage.combine(self.path_manager.map_path)
 
         # load merged data back into memory for analysis/reporting
-        self.storage.load_into(self.trace_data)
+        self.storage.load_into(self.trace_data, self.path_manager)
 
     def _patch_multiprocessing(self) -> None:
         """
@@ -272,7 +250,7 @@ class MiniCoverage:
         filename = code.co_filename
 
         if filename not in self._cache_traceable:
-            self._cache_traceable[filename] = self._should_trace(filename)
+            self._cache_traceable[filename] = self.path_manager.should_trace(filename, self.excluded_files)
 
         if self._cache_traceable[filename]:
             # enable LINE and BRANCH events for this code object
@@ -363,7 +341,7 @@ class MiniCoverage:
         filename = frame.f_code.co_filename
 
         if filename not in self._cache_traceable:
-            self._cache_traceable[filename] = self._should_trace(filename)
+            self._cache_traceable[filename] = self.path_manager.should_trace(filename, self.excluded_files)
 
         if self._cache_traceable[filename]:
             cid = self._get_current_context_id()
@@ -407,30 +385,9 @@ class MiniCoverage:
 
     def _should_trace(self, filename: str) -> bool:
         """
-        Determine if a file should be tracked based on project root and exclusions.
+        Compatibility wrapper for C tracer which expects this method to exist on the engine.
         """
-        # use realpath to ensure consistent behavior across OS environments (canonical paths)
-        # this matches how paths are treated in tests (test_utils uses realpath)
-        # but abspath is still used in run() to preserve short paths if passed by user.
-        # this function bridges the gap.
-        abs_path = os.path.realpath(filename)
-        # normalize for Windows to handle C:\ vs c:\
-        abs_path = os.path.normcase(abs_path)
-
-        if not abs_path.startswith(self.project_root):
-            return False
-        if abs_path in self.excluded_files:
-            return False
-
-        rel_path = os.path.relpath(abs_path, self.project_root)
-        # normalize to forward slashes for consistent pattern matching
-        rel_path = rel_path.replace(os.sep, '/')
-
-        for pattern in self.config['omit']:
-            if fnmatch.fnmatch(rel_path, pattern):
-                return False
-
-        return True
+        return self.path_manager.should_trace(filename, self.excluded_files)
 
     def analyze(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -449,9 +406,7 @@ class MiniCoverage:
             script_path (str): Path to the script to execute.
             script_args (list): List of command-line arguments to pass to the script.
         """
-        # normalize path for consistency, but use abspath to respect user input format (e.g. short paths)
-        # this fixes KeyError issues where test runner uses short paths but forced realpath previously.
-        abs_script_path = os.path.abspath(script_path)
+        abs_script_path = self.path_manager.canonicalize(script_path)
         script_dir = os.path.dirname(abs_script_path)
 
         original_argv = sys.argv
