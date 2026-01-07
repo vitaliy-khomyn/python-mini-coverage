@@ -155,5 +155,8 @@ class TestBranchCoverage(unittest.TestCase):
                     results = self.cov.analyze()
 
                     # Check if lines were merged (1 and 2)
-                    stmt_stats = results["file.py"]["Statement"]
+                    # The canonical filename chosen depends on set iteration order of raw files
+                    self.assertEqual(len(results), 1)
+                    result_key = list(results.keys())[0]
+                    stmt_stats = results[result_key]["Statement"]
                     self.assertEqual(len(stmt_stats['executed']), 2)
