@@ -5,7 +5,6 @@ import threading
 import multiprocessing
 import types
 
-from collections import defaultdict
 from typing import Optional, List, Dict, Any, Set
 
 # try to import the C extension
@@ -15,6 +14,7 @@ except ImportError:
     minicov_tracer = None
 
 from .analyzer import Analyzer
+from .trace_data import TraceContainer
 from .path_manager import PathManager
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
@@ -74,11 +74,7 @@ class MiniCoverage:
         # 'lines': set(lineno)
         # 'arcs': set((start, end))
         # 'instruction_arcs': set((from_offset, to_offset)) -> new for MC/DC
-        self.trace_data: Dict[str, Dict[Any, Any]] = {
-            'lines': defaultdict(lambda: defaultdict(set)),
-            'arcs': defaultdict(lambda: defaultdict(set)),
-            'instruction_arcs': defaultdict(lambda: defaultdict(set))
-        }
+        self.trace_data = TraceContainer()
 
         self.current_context: str = "default"
         self.context_cache: Dict[str, int] = {"default": 0}
@@ -281,23 +277,7 @@ class MiniCoverage:
         filename = code.co_filename
         cid = self._get_current_context_id()
 
-        self.trace_data['lines'][filename][cid].add(line_number)
-
-        # track line transitions (arcs) manually as sys.monitoring doesn't give 'last line'
-        # thread local storage
-        if not hasattr(self.thread_local, 'last_line'):
-            self.thread_local.last_line = None
-            self.thread_local.last_file = None
-
-        last_file = self.thread_local.last_file
-        last_line = self.thread_local.last_line
-
-        if last_file == filename and last_line is not None:
-            self.trace_data['arcs'][filename][cid].add((last_line, line_number))
-
-        self.thread_local.last_line = line_number
-        self.thread_local.last_file = filename
-
+        self._record_line(filename, line_number, cid)
         return None  # keep event enabled
 
     def _monitor_branch(self, code: types.CodeType, from_offset: int, to_offset: int) -> Any:
@@ -307,7 +287,7 @@ class MiniCoverage:
         filename = code.co_filename
         cid = self._get_current_context_id()
 
-        self.trace_data['instruction_arcs'][filename][cid].add((from_offset, to_offset))
+        self.trace_data.add_instruction_arc(filename, cid, from_offset, to_offset)
         return None
 
     def trace_function(self, frame: types.FrameType, event: str, arg: Any) -> Any:
@@ -354,26 +334,11 @@ class MiniCoverage:
             # 1. line trace
             if event == 'line':
                 lineno = frame.f_lineno
-                self.trace_data['lines'][filename][cid].add(lineno)
-
-                last_file = self.thread_local.last_file
-                last_line = self.thread_local.last_line
-
-                if last_file == filename and last_line is not None:
-                    self.trace_data['arcs'][filename][cid].add((last_line, lineno))
-
-                self.thread_local.last_line = lineno
-                self.thread_local.last_file = filename
+                self._record_line(filename, lineno, cid)
 
             # 2. opcode trace (for MC/DC)
             current_lasti = frame.f_lasti
-            last_lasti = self.thread_local.last_lasti
-
-            if last_lasti is not None and self.thread_local.last_file == filename:
-                self.trace_data['instruction_arcs'][filename][cid].add((last_lasti, current_lasti))
-
-            self.thread_local.last_lasti = current_lasti
-            self.thread_local.last_file = filename
+            self._record_opcode(filename, current_lasti, cid)
 
         else:
             if hasattr(self.thread_local, 'last_line'):
@@ -382,6 +347,31 @@ class MiniCoverage:
                 self.thread_local.last_lasti = None
 
         return self.trace_function
+
+    def _record_line(self, filename: str, lineno: int, cid: int) -> None:
+        self.trace_data.add_line(filename, cid, lineno)
+
+        if not hasattr(self.thread_local, 'last_line'):
+            self.thread_local.last_line = None
+            self.thread_local.last_file = None
+
+        last_file = self.thread_local.last_file
+        last_line = self.thread_local.last_line
+
+        if last_file == filename and last_line is not None:
+            self.trace_data.add_arc(filename, cid, last_line, lineno)
+
+        self.thread_local.last_line = lineno
+        self.thread_local.last_file = filename
+
+    def _record_opcode(self, filename: str, current_lasti: int, cid: int) -> None:
+        last_lasti = self.thread_local.last_lasti
+
+        if last_lasti is not None and self.thread_local.last_file == filename:
+            self.trace_data.add_instruction_arc(filename, cid, last_lasti, current_lasti)
+
+        self.thread_local.last_lasti = current_lasti
+        self.thread_local.last_file = filename
 
     def _should_trace(self, filename: str) -> bool:
         """
