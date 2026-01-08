@@ -94,9 +94,9 @@ def main():
         print("Stopping coverage...")
         cov.stop()
 
-    # generate reports (Console, HTML, XML, JSON)
+    # generate reports (Console, HTML, JSON)
     print("\n--- Generating Reports ---")
-    cov.report()
+    cov.report(reporters=['console', 'html', 'json'])
 
     # exit with status code based on test results
     sys.exit(0 if success else 1)

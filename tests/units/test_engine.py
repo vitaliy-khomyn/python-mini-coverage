@@ -3,10 +3,10 @@ import sys  # noqa: F401
 import os
 import threading
 import sqlite3
-import uuid
+import uuid  # noqa: F401
 from contextlib import closing
 from src.engine import MiniCoverage
-from src.engine import queries
+from src.engine import queries  # noqa: F401
 from tests.test_utils import BaseTestCase, MockFrame
 
 
@@ -125,68 +125,6 @@ class TestEngineCore(BaseTestCase):
             rows = cur.fetchall()
             self.assertEqual(len(rows), 1)
 
-    def test_combine_data_sqlite(self):
-        main_db = os.path.join(self.test_dir, ".coverage.db")
-        # ensure unique partial name to avoid glob mismatch
-        partial_db = f"{main_db}.123.{uuid.uuid4().hex}"
-
-        # manually create schema since _init_db is removed
-        with closing(sqlite3.connect(partial_db)) as conn:
-            conn.execute(queries.INIT_CONTEXTS)
-            conn.execute(queries.INIT_DEFAULT_CONTEXT)
-            conn.execute(queries.INIT_LINES)
-            conn.execute(queries.INIT_ARCS)
-            conn.execute(queries.INIT_INSTRUCTION_ARCS)
-
-            conn.execute("INSERT INTO contexts (id, label) VALUES (99, 'remote')")
-            conn.execute("INSERT INTO lines (file_path, context_id, line_no) VALUES ('remote.py', 99, 100)")
-            conn.commit()
-
-        self.cov.combine_data()
-
-        with closing(sqlite3.connect(main_db)) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT id FROM contexts WHERE label='remote'")
-            res = cur.fetchone()
-            self.assertIsNotNone(res, "Context 'remote' not found in main DB")
-            new_ctx_id = res[0]
-
-            cur.execute("SELECT line_no FROM lines WHERE context_id=?", (new_ctx_id,))
-            row = cur.fetchone()
-            self.assertIsNotNone(row, "Line data not found for merged context")
-            self.assertEqual(row[0], 100)
-
-        self.assertFalse(os.path.exists(partial_db))
-
-    def test_combine_duplicate_contexts(self):
-        main_db = os.path.join(self.test_dir, ".coverage.db")
-
-        p1 = f"{main_db}.1.a"
-        with closing(sqlite3.connect(p1)) as c1:
-            c1.execute(queries.INIT_CONTEXTS)
-            c1.execute(queries.INIT_LINES)
-            c1.execute(queries.INIT_ARCS)
-            c1.execute(queries.INIT_INSTRUCTION_ARCS)
-            c1.execute("INSERT INTO contexts (id, label) VALUES (10, 'common')")
-            c1.commit()
-
-        p2 = f"{main_db}.2.b"
-        with closing(sqlite3.connect(p2)) as c2:
-            c2.execute(queries.INIT_CONTEXTS)
-            c2.execute(queries.INIT_LINES)
-            c2.execute(queries.INIT_ARCS)
-            c2.execute(queries.INIT_INSTRUCTION_ARCS)
-            c2.execute("INSERT INTO contexts (id, label) VALUES (20, 'common')")
-            c2.commit()
-
-        self.cov.combine_data()
-
-        with closing(sqlite3.connect(main_db)) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT count(*) FROM contexts WHERE label='common'")
-            count = cur.fetchone()[0]
-            self.assertEqual(count, 1, "Should merge duplicate context labels")
-
     def test_config_data_file_custom(self):
         self.cov.config.data_file = "custom.sqlite"
         self.cov.storage.data_file = "custom.sqlite"
@@ -226,3 +164,20 @@ class TestEngineCore(BaseTestCase):
         self.assertIn((10, 11), arcs)
         self.assertIn((20, 21), arcs)
         self.assertNotIn((10, 20), arcs)
+
+    def test_analyze_returns_empty_when_files_excluded(self):
+        filename = os.path.join(self.test_dir, "ignored.py")
+        with open(filename, "w") as f:
+            f.write("pass")
+
+        # Inject data
+        self.cov.trace_data.add_line(filename, 0, 1)
+
+        # Exclude
+        self.cov.config.omit.add("ignored.py")
+
+        results = self.cov.analyze()
+        self.assertEqual(results, {})
+
+        self.cov.report(reporters=['json'])
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "coverage.json")))

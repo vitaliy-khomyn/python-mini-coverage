@@ -25,16 +25,16 @@ class TestBranchCoverage(unittest.TestCase):
             src_canonical: [src_alias]
         }
 
-        # mock os.path.exists to return False so realpath doesn't interfere
+        # Mock os.path.exists to return False so realpath doesn't interfere
         with patch('os.path.exists', return_value=False):
-            # case 1: match found
+            # Case 1: Match found
             input_path = os.path.join(src_alias, "file.py")
             mapped = self.cov.path_manager.map_path(input_path)
 
             expected = os.path.join(src_canonical, "file.py")
             self.assertEqual(mapped, expected)
 
-            # case 2: no match
+            # Case 2: No match
             nomatch_path = os.path.normcase(os.path.abspath("/nomatch/file.py"))
             mapped = self.cov.path_manager.map_path(nomatch_path)
             self.assertEqual(mapped, nomatch_path)
@@ -57,7 +57,7 @@ class TestBranchCoverage(unittest.TestCase):
         with patch.object(self.cov.path_manager, 'should_trace', return_value=False):
             with patch('sys.monitoring.set_local_events') as mock_set:
                 self.cov.sys_monitoring_tracer._monitor_py_start(code, 0)
-                # should call set_local_events with 0 (disable)
+                # Should call set_local_events with 0 (disable)
                 mock_set.assert_any_call(sys.monitoring.COVERAGE_ID, code, 0)
 
     def test_monitor_py_resume(self):
@@ -76,14 +76,14 @@ class TestBranchCoverage(unittest.TestCase):
         frame = MagicMock()
         frame.f_code.co_filename = "test.py"
 
-        # test 'call' event
+        # Test 'call' event
         self.cov.thread_local.last_line = 10
         self.cov.thread_local.last_lasti = 20
         self.cov.sys_settrace_tracer.trace_function(frame, "call", None)
         self.assertIsNone(self.cov.thread_local.last_line)
         self.assertIsNone(self.cov.thread_local.last_lasti)
 
-        # test 'return' event
+        # Test 'return' event
         self.cov.thread_local.last_line = 10
         self.cov.sys_settrace_tracer.trace_function(frame, "return", None)
         self.assertIsNone(self.cov.thread_local.last_line)
@@ -98,12 +98,12 @@ class TestBranchCoverage(unittest.TestCase):
         """Test ConfigLoader parsing logic."""
         loader = ConfigLoader()
 
-        # test _parse_list with mixed separators
+        # Test _parse_list with mixed separators
         raw = "a, b\nc,d"
         res = loader._parse_list(raw)
         self.assertEqual(res, {'a', 'b', 'c', 'd'})
 
-        # test _load_ini with alternative section names
+        # Test _load_ini with alternative section names
         config = CoverageConfig()
         with open("dummy.ini", "w") as f:
             f.write("[coverage:run]\nomit = *.tmp")
@@ -133,7 +133,7 @@ class TestBranchCoverage(unittest.TestCase):
 
     def test_analyze_aggregation(self):
         """Test that analyze aggregates data from multiple raw paths mapping to same file."""
-        # mock normcase to force collision
+        # Mock normcase to force collision
         with patch('os.path.normcase', side_effect=lambda p: p.lower()):
             with patch('os.path.realpath', side_effect=lambda p: p):
                 with patch('os.path.exists', return_value=True):
@@ -143,8 +143,8 @@ class TestBranchCoverage(unittest.TestCase):
                     self.cov.trace_data['lines'][f1][0].add(1)
                     self.cov.trace_data['lines'][f2][0].add(2)
 
-                    # mock dependencies
-                    # use real AST and Code Object to ensure metrics work and don't crash
+                    # Mock dependencies
+                    # Use real AST and Code Object to ensure metrics work and don't crash
                     real_ast = ast.parse("x=1\ny=2")
                     real_code = compile("x=1\ny=2", "file.py", "exec")
 
@@ -152,10 +152,10 @@ class TestBranchCoverage(unittest.TestCase):
                     self.cov.parser.compile_source = MagicMock(return_value=real_code)
                     self.cov.path_manager.should_trace = MagicMock(return_value=True)
 
-                    # run analyze
+                    # Run analyze
                     results = self.cov.analyze()
 
-                    # check if lines were merged (1 and 2)
+                    # Check if lines were merged (1 and 2)
                     self.assertEqual(len(results), 1)
                     result_key = list(results.keys())[0]
                     stmt_stats = results[result_key]["Statement"]

@@ -86,3 +86,13 @@ if len(sys.argv) > 1 and sys.argv[1] == 'foo':
         results = cov.analyze()
         norm_path = os.path.normcase(os.path.realpath(script_path))
         self.assertIn(4, results[norm_path]['Statement']['executed'])
+
+    def test_json_reporting(self):
+        script = "pass"
+        script_path = self.create_file("json_test.py", script)
+        cov = MiniCoverage(project_root=self.test_dir)
+        with self.capture_stdout():
+            cov.run(script_path)
+
+        cov.report(reporters=['json'])
+        self.assertTrue(os.path.exists(os.path.join(self.test_dir, "coverage.json")))
