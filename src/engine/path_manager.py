@@ -53,8 +53,11 @@ class PathManager:
 
         if not abs_path.startswith(self.project_root):
             return False
-        if abs_path in excluded_files:
-            return False
+
+        # check exclusions (exact match or directory prefix)
+        for excluded in excluded_files:
+            if abs_path == excluded or abs_path.startswith(excluded + os.sep):
+                return False
 
         rel_path = os.path.relpath(abs_path, self.project_root)
         # normalize to forward slashes for consistent pattern matching

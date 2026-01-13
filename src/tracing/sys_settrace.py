@@ -49,7 +49,7 @@ class SysSetTraceTracer(BaseTracer):
         filename = frame.f_code.co_filename
 
         if filename not in self.engine._cache_traceable:
-            self.engine._cache_traceable[filename] = self.engine.path_manager.should_trace(filename, self.engine.excluded_files)
+            self.engine._cache_traceable[filename] = self.engine._should_trace(filename)
 
         if self.engine._cache_traceable[filename]:
             cid = self.engine._get_current_context_id()

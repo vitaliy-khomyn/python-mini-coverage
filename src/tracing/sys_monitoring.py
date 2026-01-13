@@ -44,7 +44,7 @@ class SysMonitoringTracer(BaseTracer):
         filename = code.co_filename
 
         if filename not in self.engine._cache_traceable:
-            self.engine._cache_traceable[filename] = self.engine.path_manager.should_trace(filename, self.engine.excluded_files)
+            self.engine._cache_traceable[filename] = self.engine._should_trace(filename)
 
         if self.engine._cache_traceable[filename]:
             # enable LINE and BRANCH events for this code object

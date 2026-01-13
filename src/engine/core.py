@@ -92,6 +92,13 @@ class MiniCoverage:
         self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage()]
         # ensure excluded files are also normalized
         self.excluded_files: Set[str] = set()
+
+        # auto-exclude the tool's own source code to prevent self-instrumentation
+        # get the 'src' directory (grandparent of this file)
+        _src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self._lib_root = self.path_manager.canonicalize(_src_dir)
+        self.excluded_files.add(self._lib_root)
+
         self.analyzer = Analyzer(self.parser, self.metrics, self.config, self.path_manager, self.excluded_files)
 
         self.report_manager = ReportManager(self.config.reporters)
@@ -235,6 +242,9 @@ class MiniCoverage:
         """
         Compatibility wrapper for C tracer which expects this method to exist on the engine.
         """
+        norm_file = self.path_manager.canonicalize(filename)
+        if norm_file.startswith(self._lib_root):
+            return False
         return self.path_manager.should_trace(filename, self.excluded_files)
 
     def analyze(self) -> Dict[str, Dict[str, Any]]:
