@@ -27,6 +27,13 @@ def main():
     # explicitly set project_root to 'src' to avoid tracing the tests themselves or standard libs
     cov = MiniCoverage(project_root=src_dir)
 
+    # Enable self-coverage by removing the default exclusion of the library root.
+    # We modify the engine instance via introspection to bypass the safety check.
+    if cov._lib_root in cov.excluded_files:
+        cov.excluded_files.remove(cov._lib_root)
+    # Point _lib_root to a dummy path so the hardcoded check in _should_trace passes.
+    cov._lib_root = os.path.join(src_dir, "__self_coverage_bypass__")
+
     # start tracing
     # note: if the tests themselves instantiate MiniCoverage (e.g. in integration tests),
     # they might conflict if using the same sys.monitoring ID.
