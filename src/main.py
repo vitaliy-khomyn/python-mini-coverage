@@ -23,6 +23,7 @@ def main() -> None:
     parser_run = subparsers.add_parser("run", help="Run a Python program and measure code coverage.")
     parser_run.add_argument("script", help="Python script to execute.")
     parser_run.add_argument("script_args", nargs=argparse.REMAINDER, help="Arguments for the script.")
+    parser_run.add_argument("--preserve", action="store_true", help="Preserve existing coverage data (do not delete).")
 
     # command: report
     parser_report = subparsers.add_parser("report", help="Report coverage results.")
@@ -47,8 +48,13 @@ def main() -> None:
                     logging.info(f"Auto-loading local configuration from {config_file}")
                     break
 
+    # determine if we should erase old data (default: True for 'run', unless --preserve is set)
+    erase_on_start = False
+    if args.command == "run" and not getattr(args, 'preserve', False):
+        erase_on_start = True
+
     # init engine (loads config internally)
-    cov = MiniCoverage(config_file=config_file)
+    cov = MiniCoverage(config_file=config_file, erase_on_start=erase_on_start)
 
     if args.command == "run":
         # ensure the script path is absolute or correct relatively to CWD

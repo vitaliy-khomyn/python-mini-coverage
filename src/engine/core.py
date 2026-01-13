@@ -1,6 +1,7 @@
 import sys
 import os
 import logging
+import shutil
 import threading
 import multiprocessing
 import types
@@ -50,13 +51,14 @@ class CoverageProcess(_OriginalProcess):
 
 
 class MiniCoverage:
-    def __init__(self, project_root: Optional[str] = None, config_file: Optional[str] = None) -> None:
+    def __init__(self, project_root: Optional[str] = None, config_file: Optional[str] = None, erase_on_start: bool = False) -> None:
         """
         Initialize the coverage engine.
 
         Args:
             project_root (str): The root directory to restrict tracing to.
             config_file (str): Optional path to a configuration file.
+            erase_on_start (bool): If True, delete existing data file and reports before starting.
         """
         self.logger = logging.getLogger(__name__)
 
@@ -72,6 +74,9 @@ class MiniCoverage:
         self.project_root = self.path_manager.project_root
         self.config: CoverageConfig = self.config_loader.load_config(self.project_root, config_file)
         self.path_manager.config = self.config
+
+        if erase_on_start:
+            self._erase_data()
 
         # structure: {filename: {context_id: {data}}}
         # 'lines': set(lineno)
@@ -119,6 +124,27 @@ class MiniCoverage:
         # initialize tracers
         self.sys_monitoring_tracer = SysMonitoringTracer(self)
         self.sys_settrace_tracer = SysSetTraceTracer(self, self.c_tracer)
+
+    def _erase_data(self) -> None:
+        """
+        Erase previously collected coverage data and reports.
+        """
+        # delete the data file (e.g. .coveragedb)
+        if self.config.data_file and os.path.exists(self.config.data_file):
+            try:
+                os.remove(self.config.data_file)
+                self.logger.info(f"Erased old coverage data: {self.config.data_file}")
+            except OSError as e:
+                self.logger.warning(f"Failed to erase data file: {e}")
+
+        # delete the HTML report directory (default: htmlcov)
+        html_dir = os.path.join(self.project_root, "htmlcov")
+        if os.path.exists(html_dir):
+            try:
+                shutil.rmtree(html_dir)
+                self.logger.info(f"Erased old HTML report directory: {html_dir}")
+            except OSError as e:
+                self.logger.warning(f"Failed to erase HTML report directory: {e}")
 
     def switch_context(self, context_label: str) -> None:
         """
