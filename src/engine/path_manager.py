@@ -1,4 +1,5 @@
 import os
+import functools
 import fnmatch
 from typing import Set
 from .config import CoverageConfig
@@ -13,6 +14,7 @@ class PathManager:
         self.config = config
 
     @staticmethod
+    @functools.lru_cache(maxsize=4096)
     def canonicalize(path: str) -> str:
         """
         Convert a path to its canonical form: absolute, symlinks resolved, case-normalized.
@@ -64,9 +66,15 @@ class PathManager:
         rel_path = rel_path.replace(os.sep, '/')
 
         omit_patterns = self.config.get('omit', []) if isinstance(self.config, dict) else self.config.omit
+        filename_only = os.path.basename(abs_path)
 
         for pattern in omit_patterns:
-            if fnmatch.fnmatch(rel_path, pattern):
+            # if pattern contains a separator, match against the full relative path
+            if '/' in pattern or (os.sep != '/' and os.sep in pattern):
+                if fnmatch.fnmatch(rel_path, pattern):
+                    return False
+            # otherwise, match against the filename only (prevents 'test_*' matching 'test_project/')
+            elif fnmatch.fnmatch(filename_only, pattern):
                 return False
 
         return True

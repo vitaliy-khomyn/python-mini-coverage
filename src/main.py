@@ -34,8 +34,21 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    # Determine config file based on command
+    config_file = None
+    if args.command == "run":
+        script_path = args.script
+        if os.path.isfile(script_path):
+            script_dir = os.path.dirname(os.path.abspath(script_path))
+            for config_name in ['.coveragerc', 'pyproject.toml', 'setup.cfg', 'tox.ini']:
+                candidate = os.path.join(script_dir, config_name)
+                if os.path.exists(candidate):
+                    config_file = candidate
+                    logging.info(f"Auto-loading local configuration from {config_file}")
+                    break
+
     # init engine (loads config internally)
-    cov = MiniCoverage()
+    cov = MiniCoverage(config_file=config_file)
 
     if args.command == "run":
         # ensure the script path is absolute or correct relatively to CWD
