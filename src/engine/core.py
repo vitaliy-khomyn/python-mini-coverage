@@ -146,6 +146,24 @@ class MiniCoverage:
             except OSError as e:
                 self.logger.warning(f"Failed to erase HTML report directory: {e}")
 
+        # delete XML report (default: coverage.xml)
+        xml_file = os.path.join(self.project_root, "coverage.xml")
+        if os.path.exists(xml_file):
+            try:
+                os.remove(xml_file)
+                self.logger.info(f"Erased old XML report: {xml_file}")
+            except OSError as e:
+                self.logger.warning(f"Failed to erase XML report: {e}")
+
+        # delete JSON report (default: coverage.json)
+        json_file = os.path.join(self.project_root, "coverage.json")
+        if os.path.exists(json_file):
+            try:
+                os.remove(json_file)
+                self.logger.info(f"Erased old JSON report: {json_file}")
+            except OSError as e:
+                self.logger.warning(f"Failed to erase JSON report: {e}")
+
     def switch_context(self, context_label: str) -> None:
         """
         Switch the current recording context.
@@ -249,7 +267,7 @@ class MiniCoverage:
         self.thread_local.last_line = lineno
         self.thread_local.last_file = filename
 
-    def _record_opcode(self, filename: str, current_lasti: int, cid: int) -> None:
+    def _record_opcode(self, filename: str, code_id: int, current_lasti: int, cid: int) -> None:
         if not hasattr(self.thread_local, 'last_lasti'):
             self.thread_local.last_lasti = None
             if not hasattr(self.thread_local, 'last_file'):
@@ -259,7 +277,7 @@ class MiniCoverage:
         last_lasti = self.thread_local.last_lasti
 
         if last_lasti is not None and self.thread_local.last_file == filename:
-            self.trace_data.add_instruction_arc(filename, cid, last_lasti, current_lasti)
+            self.trace_data.add_instruction_arc(filename, cid, code_id, last_lasti, current_lasti)
 
         self.thread_local.last_lasti = current_lasti
         self.thread_local.last_file = filename

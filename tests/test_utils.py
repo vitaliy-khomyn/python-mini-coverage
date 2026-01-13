@@ -63,3 +63,4 @@ class MockCode:
     def __init__(self, filename, name):
         self.co_filename = filename
         self.co_name = name
+        self.co_firstlineno = 1

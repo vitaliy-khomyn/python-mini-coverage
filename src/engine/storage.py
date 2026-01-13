@@ -76,8 +76,8 @@ class CoverageStorage:
             instr_data = []
             for file, ctx_map in trace_data['instruction_arcs'].items():
                 for cid, arcs in ctx_map.items():
-                    for start, end in arcs:
-                        instr_data.append((file, cid, start, end))
+                    for code_id, start, end in arcs:
+                        instr_data.append((file, cid, code_id, start, end))
             cur.executemany(queries.INSERT_INSTRUCTION_ARC, instr_data)
 
             conn.commit()
@@ -157,8 +157,8 @@ class CoverageStorage:
                 trace_data['arcs'][path_manager.canonicalize(file)][0].add((start, end))
 
             cur.execute(queries.SELECT_INSTRUCTION_ARCS)
-            for file, start, end in cur.fetchall():
-                trace_data['instruction_arcs'][path_manager.canonicalize(file)][0].add((start, end))
+            for file, code_id, start, end in cur.fetchall():
+                trace_data['instruction_arcs'][path_manager.canonicalize(file)][0].add((code_id, start, end))
 
             conn.close()
         except sqlite3.OperationalError as e:

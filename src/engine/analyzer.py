@@ -97,6 +97,10 @@ class Analyzer:
                     executed = aggregated_instr
 
                 stats = metric.calculate_stats(possible, executed)
+
+                if metric.get_name() == "Condition" and hasattr(metric, 'map_missing_arcs'):
+                    stats['missing_outcomes'] = metric.map_missing_arcs(code_obj, stats['missing'])
+
                 file_results[metric.get_name()] = stats
 
             full_results[canonical_filename] = file_results

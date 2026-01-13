@@ -156,6 +156,11 @@ static int handle_opcode_event(Tracer *self, PyFrameObject *frame, PyObject *fil
     int current_lasti_int = PyFrame_GetLasti(frame);
     PyObject *current_lasti = PyLong_FromLong(current_lasti_int);
 
+    // get code_id (co_firstlineno)
+    PyObject *code = PyObject_GetAttrString((PyObject*)frame, "f_code");
+    PyObject *co_firstlineno = PyObject_GetAttrString(code, "co_firstlineno");
+    Py_DECREF(code);
+
     PyObject *last_lasti = PyObject_GetAttrString(self->engine_thread_local, "last_lasti");
     PyObject *last_file_op = PyObject_GetAttrString(self->engine_thread_local, "last_file");
 
@@ -166,7 +171,7 @@ static int handle_opcode_event(Tracer *self, PyFrameObject *frame, PyObject *fil
             if (file_instr_dict) {
                 PyObject *instr_set = PyObject_GetItem(file_instr_dict, cid);
                 if (instr_set) {
-                    PyObject *arc = PyTuple_Pack(2, last_lasti, current_lasti);
+                    PyObject *arc = PyTuple_Pack(3, co_firstlineno, last_lasti, current_lasti);
                     PySet_Add(instr_set, arc);
                     Py_DECREF(arc);
                     Py_DECREF(instr_set);
@@ -177,6 +182,7 @@ static int handle_opcode_event(Tracer *self, PyFrameObject *frame, PyObject *fil
     }
     Py_XDECREF(last_lasti);
     Py_XDECREF(last_file_op);
+    Py_XDECREF(co_firstlineno);
 
     // update state
     PyObject_SetAttrString(self->engine_thread_local, "last_lasti", current_lasti);

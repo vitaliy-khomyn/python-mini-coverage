@@ -81,5 +81,5 @@ class SysMonitoringTracer(BaseTracer):
     def _monitor_branch(self, code: types.CodeType, from_offset: int, to_offset: int) -> Any:
         filename = code.co_filename
         cid = self.engine._get_current_context_id()
-        self.engine.trace_data.add_instruction_arc(filename, cid, from_offset, to_offset)
+        self.engine.trace_data.add_instruction_arc(filename, cid, code.co_firstlineno, from_offset, to_offset)
         return None

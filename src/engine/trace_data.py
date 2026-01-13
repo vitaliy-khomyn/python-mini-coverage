@@ -19,8 +19,8 @@ class TraceContainer:
     def add_arc(self, filename: str, context_id: int, start: int, end: int) -> None:
         self._data['arcs'][filename][context_id].add((start, end))
 
-    def add_instruction_arc(self, filename: str, context_id: int, start: int, end: int) -> None:
-        self._data['instruction_arcs'][filename][context_id].add((start, end))
+    def add_instruction_arc(self, filename: str, context_id: int, code_id: int, start: int, end: int) -> None:
+        self._data['instruction_arcs'][filename][context_id].add((code_id, start, end))
 
     def __getitem__(self, key: str) -> Any:
         return self._data[key]

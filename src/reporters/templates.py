@@ -96,6 +96,7 @@ def render_file(filename, code_html):
         .miss {{ background-color: #f8d7da; }}
         .partial {{ background-color: #fff3cd; }}
         .annotate {{ color: #856404; font-weight: bold; float: right; margin-left: 20px; }}
+        .mcdc {{ color: #721c24; background-color: #f8d7da; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }}
     </style>
 </head>
 <body>

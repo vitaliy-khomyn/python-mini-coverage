@@ -94,6 +94,9 @@ class HtmlReporter(BaseReporter):
             for start, end in branch_data['missing']:
                 missing_branches[start].append(end)
 
+        cond_data = data.get('Condition')
+        missing_conditions = cond_data.get('missing_outcomes', {}) if cond_data else {}
+
         try:
             with open(filename, 'r', encoding='utf-8') as f:
                 source_lines = f.readlines()
@@ -118,6 +121,14 @@ class HtmlReporter(BaseReporter):
 
                 targets_str = ", ".join(map(str, targets))
                 annotation = f"<span class='annotate'>Missed branch to: {targets_str}</span>"
+
+            if lineno in missing_conditions:
+                if css_class == "hit":
+                    css_class = "partial"
+
+                conds = missing_conditions[lineno]
+                cond_str = ", ".join(sorted(set(conds)))
+                annotation += f"<span class='annotate mcdc'>MC/DC Missing: {cond_str}</span>"
 
             line_content = html.escape(line.rstrip())
             code_html += templates.render_code_line(lineno, line_content, css_class, annotation)

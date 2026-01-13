@@ -61,6 +61,6 @@ class SysSetTraceTracer(BaseTracer):
 
             # 2. opcode trace (for MC/DC)
             current_lasti = frame.f_lasti
-            self.engine._record_opcode(filename, current_lasti, cid)
+            self.engine._record_opcode(filename, frame.f_code.co_firstlineno, current_lasti, cid)
 
         return self.trace_function

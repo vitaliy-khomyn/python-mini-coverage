@@ -36,9 +36,10 @@ INIT_INSTRUCTION_ARCS = """
     CREATE TABLE IF NOT EXISTS instruction_arcs (
         file_path TEXT,
         context_id INTEGER,
+        code_id INTEGER,
         from_offset INTEGER,
         to_offset INTEGER,
-        PRIMARY KEY (file_path, context_id, from_offset, to_offset),
+        PRIMARY KEY (file_path, context_id, code_id, from_offset, to_offset),
         FOREIGN KEY(context_id) REFERENCES contexts(id)
     )
 """
@@ -46,7 +47,7 @@ INIT_INSTRUCTION_ARCS = """
 INSERT_CONTEXT = "INSERT OR IGNORE INTO contexts (id, label) VALUES (?, ?)"
 INSERT_LINE = "INSERT OR IGNORE INTO lines (file_path, context_id, line_no) VALUES (?, ?, ?)"
 INSERT_ARC = "INSERT OR IGNORE INTO arcs (file_path, context_id, start_line, end_line) VALUES (?, ?, ?, ?)"
-INSERT_INSTRUCTION_ARC = "INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, from_offset, to_offset) VALUES (?, ?, ?, ?)"
+INSERT_INSTRUCTION_ARC = "INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, code_id, from_offset, to_offset) VALUES (?, ?, ?, ?, ?)"
 
 # dynamic queries (format strings)
 MERGE_CONTEXTS = "INSERT OR IGNORE INTO contexts (label) SELECT label FROM {alias}.contexts"
@@ -69,8 +70,8 @@ MERGE_ARCS = """
 """
 
 MERGE_INSTRUCTION_ARCS = """
-    INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, from_offset, to_offset)
-    SELECT remap_path(a.file_path), main_c.id, a.from_offset, a.to_offset
+    INSERT OR IGNORE INTO instruction_arcs (file_path, context_id, code_id, from_offset, to_offset)
+    SELECT remap_path(a.file_path), main_c.id, a.code_id, a.from_offset, a.to_offset
     FROM {alias}.instruction_arcs a
     JOIN {alias}.contexts partial_c ON a.context_id = partial_c.id
     JOIN contexts main_c ON partial_c.label = main_c.label
@@ -78,4 +79,4 @@ MERGE_INSTRUCTION_ARCS = """
 
 SELECT_LINES = "SELECT file_path, line_no FROM lines"
 SELECT_ARCS = "SELECT file_path, start_line, end_line FROM arcs"
-SELECT_INSTRUCTION_ARCS = "SELECT file_path, from_offset, to_offset FROM instruction_arcs"
+SELECT_INSTRUCTION_ARCS = "SELECT file_path, code_id, from_offset, to_offset FROM instruction_arcs"
