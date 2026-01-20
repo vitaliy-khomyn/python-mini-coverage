@@ -28,6 +28,8 @@ from .storage import CoverageStorage
 
 _OriginalProcess = multiprocessing.Process
 
+# thread-local storage to prevent race conditions when starting multiple engines
+_config_local = threading.local()
 
 class CoverageProcess(_OriginalProcess):
     # class-level config to support pickling (set by _patch_multiprocessing)
@@ -35,8 +37,13 @@ class CoverageProcess(_OriginalProcess):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._cov_project_root = self._subprocess_setup["project_root"]
-        self._cov_config_file = self._subprocess_setup["config_file"]
+        # prefer thread-local config if available (handles concurrent starts)
+        if hasattr(_config_local, "project_root"):
+            self._cov_project_root = _config_local.project_root
+            self._cov_config_file = _config_local.config_file
+        else:
+            self._cov_project_root = self._subprocess_setup["project_root"]
+            self._cov_config_file = self._subprocess_setup["config_file"]
 
     def run(self) -> None:
         if self._cov_project_root:
@@ -81,7 +88,7 @@ class MiniCoverage:
         # structure: {filename: {context_id: {data}}}
         # 'lines': set(lineno)
         # 'arcs': set((start, end))
-        # 'instruction_arcs': set((from_offset, to_offset)) -> new for MC/DC
+        # 'instruction_arcs': set((from_offset, to_offset)) -> new for Condition Coverage
         self.trace_data = TraceContainer()
 
         self.current_context: str = "default"
@@ -233,6 +240,10 @@ class MiniCoverage:
         """
         self._patch_multiprocessing()
 
+        # set thread-local config for CoverageProcess initialization
+        _config_local.project_root = self.project_root
+        _config_local.config_file = self.config_file
+
         success = False
         if sys.version_info >= (3, 12):
             success = self.sys_monitoring_tracer.start()
@@ -245,6 +256,12 @@ class MiniCoverage:
         """
         Stop coverage tracing and save data to disk.
         """
+        # clean up thread-local config
+        if hasattr(_config_local, "project_root"):
+            del _config_local.project_root
+        if hasattr(_config_local, "config_file"):
+            del _config_local.config_file
+
         if sys.version_info >= (3, 12):
             self.sys_monitoring_tracer.stop()
 
@@ -287,7 +304,8 @@ class MiniCoverage:
         Compatibility wrapper for C tracer which expects this method to exist on the engine.
         """
         norm_file = self.path_manager.canonicalize(filename)
-        if norm_file.startswith(self._lib_root):
+        # ensure matching the directory boundary to avoid prefix collisions
+        if norm_file == self._lib_root or norm_file.startswith(self._lib_root + os.sep):
             return False
         return self.path_manager.should_trace(filename, self.excluded_files)
 
