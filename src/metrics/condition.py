@@ -1,16 +1,28 @@
 import types
 import collections
-from typing import Set, Tuple, Optional, Dict, List
+from typing import Set, Tuple, Optional, Dict, Any
 from .base import CoverageMetric
 from .cfg import ControlFlowGraph
 
 
 class ConditionCoverage(CoverageMetric):
     """
-    MC/DC Implementation.
+    Condition Coverage Implementation.
     Identifies boolean jump instructions and verifies that both outcomes (True/False)
     were executed at the bytecode level.
     """
+
+    # Opcodes that represent boolean decisions in Python bytecode
+    BOOL_OPS = {
+        'POP_JUMP_IF_FALSE',
+        'POP_JUMP_IF_TRUE',
+        'JUMP_IF_FALSE_OR_POP',
+        'JUMP_IF_TRUE_OR_POP',
+        'POP_JUMP_FORWARD_IF_FALSE',
+        'POP_JUMP_FORWARD_IF_TRUE',
+        'POP_JUMP_BACKWARD_IF_FALSE',
+        'POP_JUMP_BACKWARD_IF_TRUE'
+    }
 
     def get_name(self) -> str:
         return "Condition"
@@ -32,6 +44,12 @@ class ConditionCoverage(CoverageMetric):
         self._analyze_boolean_jumps(code_obj, arcs)
         return arcs
 
+    def _get_branch_labels(self, opname: str) -> Tuple[str, str]:
+        """Returns (jump_label, fallthrough_label) for a boolean opcode."""
+        jump_val = "True" if "TRUE" in opname else "False"
+        fall_val = "False" if jump_val == "True" else "True"
+        return jump_val, fall_val
+
     def _analyze_boolean_jumps(self, co: types.CodeType, arcs: Set[Tuple[int, int, int]]) -> None:
         # instructions to find offsets
         cfg = ControlFlowGraph(co)
@@ -40,16 +58,7 @@ class ConditionCoverage(CoverageMetric):
         for i, instr in enumerate(cfg.instructions):
             # instructions relevant for boolean logic
             # includes python 3.11+ directional variants
-            is_bool_jump = instr.opname in (
-                'POP_JUMP_IF_FALSE',
-                'POP_JUMP_IF_TRUE',
-                'JUMP_IF_FALSE_OR_POP',
-                'JUMP_IF_TRUE_OR_POP',
-                'POP_JUMP_FORWARD_IF_FALSE',
-                'POP_JUMP_FORWARD_IF_TRUE',
-                'POP_JUMP_BACKWARD_IF_FALSE',
-                'POP_JUMP_BACKWARD_IF_TRUE'
-            )
+            is_bool_jump = instr.opname in self.BOOL_OPS
 
             if is_bool_jump:
                 # 1. target arc (Jump Taken)
@@ -67,63 +76,147 @@ class ConditionCoverage(CoverageMetric):
             if isinstance(const, types.CodeType):
                 self._analyze_boolean_jumps(const, arcs)
 
-    def map_missing_arcs(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]]) -> Dict[int, List[str]]:
+    def map_missing_arcs(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
         """
         Map missing bytecode arcs to source line numbers with human-readable labels.
-        Returns: {lineno: ['True', 'False']}
+        Returns: {lineno: {'missing': [{'vector': '...', 'terminal': bool}], 'ratio': '3/4'}}
         """
-        missing_map = collections.defaultdict(list)
+        # We will accumulate stats per line across all code objects (handling lambdas etc)
+        # Structure: lineno -> {'total': int, 'missing': [str]}
+        global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': []})
+
         if not missing_arcs or not code_obj:
-            return dict(missing_map)
+            return {}
 
         def _visit_code(co):
+            # Recurse into nested code objects (lambdas, comprehensions, inner functions)
             for const in co.co_consts:
                 if isinstance(const, types.CodeType):
                     _visit_code(const)
 
             code_id = co.co_firstlineno
-
-            # Build a robust offset-to-line mapping using co_lines() (Python 3.10+)
-            offset_to_line = {}
-            if hasattr(co, 'co_lines'):
-                for start, end, line in co.co_lines():
-                    if line is not None:
-                        # Bytecode instructions are 2 bytes
-                        for off in range(start, end, 2):
-                            offset_to_line[off] = line
-
-            # Use CFG to ensure consistent instruction parsing with _analyze_boolean_jumps
             try:
                 cfg = ControlFlowGraph(co)
             except Exception:
                 return
 
+            # 1. Collect boolean instructions for this code object, grouped by line
+            # We need a reliable offset-to-line mapping
+            offset_to_line = {}
+            if hasattr(co, 'co_lines'):
+                for start, end, line in co.co_lines():
+                    if line is not None:
+                        for off in range(start, end, 2):
+                            offset_to_line[off] = line
+
+            line_ops = collections.defaultdict(list)
             for i, instr in enumerate(cfg.instructions):
-                # Lookup line number for this instruction's offset
-                lineno = offset_to_line.get(instr.offset, co.co_firstlineno)
+                if instr.opname in self.BOOL_OPS:
+                    lineno = offset_to_line.get(instr.offset, co.co_firstlineno)
+                    if lineno and lineno > 0:
+                        # We need next_offset to identify the fallthrough arc
+                        next_offset = None
+                        if i + 1 < len(cfg.instructions):
+                            next_offset = cfg.instructions[i+1].offset
 
-                if instr.opname in ('POP_JUMP_IF_FALSE', 'POP_JUMP_IF_TRUE', 'JUMP_IF_FALSE_OR_POP', 'JUMP_IF_TRUE_OR_POP', 'POP_JUMP_FORWARD_IF_FALSE', 'POP_JUMP_FORWARD_IF_TRUE', 'POP_JUMP_BACKWARD_IF_FALSE', 'POP_JUMP_BACKWARD_IF_TRUE'):
-                    jump_val = "True" if "TRUE" in instr.opname else "False"
-                    fall_val = "False" if jump_val == "True" else "True"
+                        line_ops[lineno].append({
+                            'instr': instr,
+                            'next_offset': next_offset
+                        })
 
-                    # Filter out invalid line numbers (0, negative, or None)
-                    if lineno is None or lineno <= 0:
-                        continue
+            # 2. Analyze each line's boolean logic to construct vectors
+            for lineno, ops in line_ops.items():
+                # Sort by offset to establish evaluation order
+                ops.sort(key=lambda x: x['instr'].offset)
 
-                    # Check jump target
+                # Calculate total terminal paths for this line
+                # For a sequence of N boolean ops, there are N+1 terminal paths.
+                global_line_stats[lineno]['total'] += len(ops) + 1
+
+                for i, op_data in enumerate(ops):
+                    instr = op_data['instr']
+                    next_offset = op_data['next_offset']
+
+                    # Determine values
+                    jump_val, fall_val = self._get_branch_labels(instr.opname)
+
+                    # Construct "Prefix": The path required to reach this condition.
+                    # We assume sequential evaluation: to reach op[i], we must have fallen through op[0]...op[i-1]
+                    prefix = []
+                    for prev_op in ops[:i]:
+                        _, prev_fall_val = self._get_branch_labels(prev_op['instr'].opname)
+                        prefix.append(prev_fall_val)
+
+                    # Suffix length (remaining conditions on this line)
+                    suffix_len = len(ops) - 1 - i
+
+                    # Check Jump Arc (Short-circuit path)
                     target = int(instr.argval)
                     jump_key = (code_id, instr.offset, target)
-
                     if jump_key in missing_arcs:
-                        missing_map[lineno].append(jump_val)
+                        # If we jump, we skip the suffix. Represent skipped as "-"
+                        vector = prefix + [jump_val] + ["-"] * suffix_len
+                        global_line_stats[lineno]['missing'].append({
+                            'vector': vector,
+                            'terminal': True
+                        })
 
-                    # Check fallthrough
-                    if i + 1 < len(cfg.instructions):
-                        next_offset = cfg.instructions[i+1].offset
+                    # Check Fallthrough Arc (Continue path)
+                    if next_offset is not None:
                         fall_key = (code_id, instr.offset, next_offset)
-
                         if fall_key in missing_arcs:
-                            missing_map[lineno].append(fall_val)
+                            vector = prefix + [fall_val] + ["..."] * suffix_len
+                            global_line_stats[lineno]['missing'].append({
+                                'vector': vector,
+                                'terminal': (i == len(ops) - 1)
+                            })
 
         _visit_code(code_obj)
-        return dict(missing_map)
+
+        # Format the result
+        result = {}
+        for lineno, stats in global_line_stats.items():
+            # Calculate clean_missing regardless of whether it's empty
+            clean_missing = []
+            if stats['missing']:
+                # Filter redundant intermediate vectors (e.g. remove "True, ..." if "True, False" exists)
+                raw_items = stats['missing']
+                indices_to_remove = set()
+
+                for i, item_a in enumerate(raw_items):
+                    if item_a['terminal']:
+                        continue
+
+                    vec_a = item_a['vector']
+                    # Find prefix before "..."
+                    try:
+                        stop_idx = vec_a.index("...")
+                        prefix_a = vec_a[:stop_idx]
+                    except ValueError:
+                        prefix_a = vec_a
+
+                    # Check if extended by any other vector
+                    for j, item_b in enumerate(raw_items):
+                        if i == j: continue
+                        vec_b = item_b['vector']
+                        if len(vec_b) >= len(prefix_a) and vec_b[:len(prefix_a)] == prefix_a:
+                            indices_to_remove.add(i)
+                            break
+
+                for i, item in enumerate(raw_items):
+                    if i not in indices_to_remove:
+                        clean_missing.append({
+                            'vector': ", ".join(item['vector']),
+                            'terminal': item['terminal']
+                        })
+
+            covered = stats['total'] - len(clean_missing)
+            ratio = f"{covered}/{stats['total']}"
+            result[lineno] = {
+                'missing': clean_missing,
+                'ratio': ratio,
+                'covered': covered,
+                'total': stats['total']
+            }
+
+        return result

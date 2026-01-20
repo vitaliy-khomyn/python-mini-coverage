@@ -42,16 +42,19 @@ class CoverageMetric(ABC):
                 'pct': 100.0,
                 'missing': set(),
                 'executed': set(),
-                'possible': set()
+                'possible': set(),
+                'ratio': "0/0"
             }
 
         hit = possible_elements.intersection(executed_data)
         missing = possible_elements - hit
         pct = (len(hit) / len(possible_elements)) * 100
+        ratio = f"{len(hit)}/{len(possible_elements)}"
 
         return {
             'pct': pct,
             'missing': missing,
             'executed': hit,
-            'possible': possible_elements
+            'possible': possible_elements,
+            'ratio': ratio
         }

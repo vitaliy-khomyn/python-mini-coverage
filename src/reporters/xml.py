@@ -91,13 +91,24 @@ class XmlReporter(BaseReporter):
                     branch_map[start].append(end)
                 executed_branches = set(branch['executed'])
 
+            cond = file_data.get('Condition')
+            cond_outcomes = cond.get('missing_outcomes', {}) if cond else {}
+
             for lineno in sorted(all_lines):
                 line_elem = ET.SubElement(lines_elem, "line")
                 line_elem.set("number", str(lineno))
                 hits = 1 if lineno in executed else 0
                 line_elem.set("hits", str(hits))
 
-                if lineno in branch_map:
+                if lineno in cond_outcomes:
+                    # Use Condition Coverage data if available (more granular)
+                    c_stat = cond_outcomes[lineno]
+                    covered = c_stat.get('covered', 0)
+                    total = c_stat.get('total', 0)
+                    pct = int((covered / total) * 100) if total > 0 else 100
+                    line_elem.set("condition-coverage", f"{pct}% ({covered}/{total})")
+                    line_elem.set("branch", "true")
+                elif lineno in branch_map:
                     targets = branch_map[lineno]
                     line_elem.set("branch", "true")
 

@@ -3,7 +3,7 @@ HTML templates and rendering helpers for the HTML reporter.
 """
 
 
-def render_index(stmt_pct, branch_pct, cond_pct, rows):
+def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_ratio, rows):
     return f"""
 <!DOCTYPE html>
 <html>
@@ -32,9 +32,9 @@ def render_index(stmt_pct, branch_pct, cond_pct, rows):
     <h1>Coverage Report</h1>
     <div class="summary">
         <strong>Total Coverage:</strong> 
-        Statements: <span class="{_get_css_class(stmt_pct)}">{stmt_pct:.1f}%</span> | 
-        Branches: <span class="{_get_css_class(branch_pct)}">{branch_pct:.1f}%</span> | 
-        Conditions (MC/DC): <span class="{_get_css_class(cond_pct)}">{cond_pct:.1f}%</span>
+        Statements: <span class="{_get_css_class(stmt_pct)}">{stmt_pct:.1f}% ({stmt_ratio})</span> | 
+        Branches: <span class="{_get_css_class(branch_pct)}">{branch_pct:.1f}% ({branch_ratio})</span> | 
+        Conditions: <span class="{_get_css_class(cond_pct)}">{cond_pct:.1f}% ({cond_ratio})</span>
     </div>
     <table>
         <thead>
@@ -71,8 +71,9 @@ def _render_cell(metric_data):
 
 
     pct = metric_data.get('pct', 0)
+    ratio = metric_data.get('ratio', "0/0")
     css = _get_css_class(pct)
-    return f'<td class="numeric {css}">{pct:.0f}%</td>'
+    return f'<td class="numeric {css}">{pct:.0f}% <span style="font-size:0.8em; color:#555">({ratio})</span></td>'
 
 
 def _get_css_class(pct):
@@ -95,9 +96,36 @@ def render_file(filename, code_html):
         .hit {{ background-color: #d4edda; }}
         .miss {{ background-color: #f8d7da; }}
         .partial {{ background-color: #fff3cd; }}
+        .cond-partial {{ background-color: #add8e6; }}
         .annotate {{ color: #856404; font-weight: bold; float: right; margin-left: 20px; }}
-        .mcdc {{ color: #721c24; background-color: #f8d7da; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }}
+        .condition {{ color: #721c24; background-color: #f8d7da; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; cursor: pointer; }}
+        .condition:hover {{ text-decoration: underline; }}
+        .condition-details {{
+            display: none;
+            margin-top: 5px;
+            margin-bottom: 5px;
+            padding: 5px 10px;
+            background-color: #f8d7da;
+            color: #721c24;
+            border-left: 3px solid #721c24;
+            font-family: sans-serif;
+            white-space: normal;
+            font-size: 0.9em;
+        }}
+        .line.has-details {{ cursor: pointer; }}
+        .condition-table {{ width: auto; border-collapse: collapse; font-size: 0.9em; margin-top: 5px; border: 1px solid #721c24; }}
+        .condition-table th, .condition-table td {{ border: 1px solid #721c24; padding: 4px; text-align: left; }}
+        .condition-table th {{ background-color: #f5c6cb; }}
+        .condition-marker {{ text-align: center; font-weight: bold; width: 50px; }}
+        .line.open .condition-details {{ display: block; }}
     </style>
+    <script>
+        function toggleDetails(el, event) {{
+            if (event && event.target.closest('.condition-details')) return;
+            var line = el.closest('.line');
+            line.classList.toggle('open');
+        }}
+    </script>
 </head>
 <body>
     {code_html}
@@ -106,14 +134,23 @@ def render_file(filename, code_html):
 """
 
 
-def render_code_line(lineno, content, css_class, annotation):
+def render_code_line(lineno, content, css_class, annotation, details=None):
     # content is already escaped
-    line_div = f'<div class="line {css_class}">'
+    extra_attrs = ""
+    if details:
+        css_class += " has-details"
+        extra_attrs = ' onclick="toggleDetails(this, event)"'
+
+    line_div = f'<div class="line {css_class}"{extra_attrs}>'
     line_div += f'<span class="lineno">{lineno}</span>'
 
     if annotation:
         line_div += annotation
 
     line_div += content
+
+    if details:
+        line_div += f'<div class="condition-details">{details}</div>'
+
     line_div += '</div>'
     return line_div

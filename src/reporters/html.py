@@ -45,12 +45,19 @@ class HtmlReporter(BaseReporter):
             totals['branch']['possible'] += len(branch.get('possible', []))
             totals['branch']['missing'] += len(branch.get('missing', []))
 
-            totals['cond']['possible'] += len(cond.get('possible', []))
-            totals['cond']['missing'] += len(cond.get('missing', []))
+            missing_outcomes = cond.get('missing_outcomes', {})
+            if missing_outcomes:
+                for line_stats in missing_outcomes.values():
+                    totals['cond']['possible'] += line_stats.get('total', 0)
+                    totals['cond']['missing'] += len(line_stats.get('missing', []))
+            else:
+                totals['cond']['possible'] += len(cond.get('possible', []))
+                totals['cond']['missing'] += len(cond.get('missing', []))
 
             # calculate percentages for this file
             # ensure pct exists even if empty
             stmt.setdefault('pct', 0)
+            stmt.setdefault('ratio', "0/0")
 
             rel_name = os.path.relpath(filename, project_root)
             file_html_link = f"{self._sanitize_filename(rel_name)}.html"
@@ -68,11 +75,24 @@ class HtmlReporter(BaseReporter):
             if poss == 0: return 100.0
             return ((poss - miss) / poss) * 100.0
 
-        total_stmt_pct = calc_pct(totals['stmt']['possible'], totals['stmt']['missing'])
-        total_branch_pct = calc_pct(totals['branch']['possible'], totals['branch']['missing'])
-        total_cond_pct = calc_pct(totals['cond']['possible'], totals['cond']['missing'])
+        def calc_ratio(poss, miss):
+            return f"{poss - miss}/{poss}"
 
-        html_content = templates.render_index(total_stmt_pct, total_branch_pct, total_cond_pct, rows)
+        total_stmt_pct = calc_pct(totals['stmt']['possible'], totals['stmt']['missing'])
+        total_stmt_ratio = calc_ratio(totals['stmt']['possible'], totals['stmt']['missing'])
+
+        total_branch_pct = calc_pct(totals['branch']['possible'], totals['branch']['missing'])
+        total_branch_ratio = calc_ratio(totals['branch']['possible'], totals['branch']['missing'])
+
+        total_cond_pct = calc_pct(totals['cond']['possible'], totals['cond']['missing'])
+        total_cond_ratio = calc_ratio(totals['cond']['possible'], totals['cond']['missing'])
+
+        html_content = templates.render_index(
+            total_stmt_pct, total_stmt_ratio,
+            total_branch_pct, total_branch_ratio,
+            total_cond_pct, total_cond_ratio,
+            rows
+        )
 
         with open(os.path.join(self.output_dir, "index.html"), "w") as f:
             f.write(html_content)
@@ -108,6 +128,7 @@ class HtmlReporter(BaseReporter):
             lineno = i + 1
             css_class = ""
             annotation = ""
+            details = None
 
             if lineno in executed_lines:
                 css_class = "hit"
@@ -123,15 +144,28 @@ class HtmlReporter(BaseReporter):
                 annotation = f"<span class='annotate'>Missed branch to: {targets_str}</span>"
 
             if lineno in missing_conditions:
-                if css_class == "hit":
-                    css_class = "partial"
-
-                conds = missing_conditions[lineno]
-                cond_str = ", ".join(sorted(set(conds)))
-                annotation += f"<span class='annotate mcdc'>MC/DC Missing: {cond_str}</span>"
+                cond_info = missing_conditions[lineno]
+                if isinstance(cond_info, dict) and 'ratio' in cond_info:
+                    if cond_info['missing']:
+                        annotation += f"<span class='annotate condition'>Coverage: {cond_info['ratio']}</span>"
+                        if css_class == "hit":
+                            css_class = "cond-partial"
+                        rows = ""
+                        for item in cond_info['missing']:
+                            # item is dict {'vector': str, 'terminal': bool}
+                            vec = item.get('vector', str(item))
+                            rows += f"<tr><td>{html.escape(vec)}</td></tr>"
+                        details = f"<strong>Missing Cases:</strong><table class='condition-table'><thead><tr><th>Conditions</th></tr></thead><tbody>{rows}</tbody></table>"
+                else:
+                    # Fallback for legacy format
+                    if css_class == "hit":
+                        css_class = "cond-partial"
+                    conds = cond_info
+                    cond_str = ", ".join(sorted(set(conds)))
+                    annotation += f"<span class='annotate condition'>Condition Missing: {cond_str}</span>"
 
             line_content = html.escape(line.rstrip())
-            code_html += templates.render_code_line(lineno, line_content, css_class, annotation)
+            code_html += templates.render_code_line(lineno, line_content, css_class, annotation, details)
 
         html_content = templates.render_file(html.escape(rel_name), code_html)
 

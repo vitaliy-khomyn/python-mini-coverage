@@ -25,10 +25,15 @@ class JsonReporter(BaseReporter):
             for metric_name, stats in metrics.items():
                 file_metrics[metric_name] = {
                     'pct': stats['pct'],
+                    'ratio': stats.get('ratio', "0/0"),
                     'missing': sorted(list(stats['missing'])),
                     'executed': sorted(list(stats['executed'])),
                     'possible': sorted(list(stats['possible']))
                 }
+
+                if 'missing_outcomes' in stats:
+                    file_metrics[metric_name]['missing_outcomes'] = stats['missing_outcomes']
+
             serializable_results[rel_name] = file_metrics
 
         final_report = {
