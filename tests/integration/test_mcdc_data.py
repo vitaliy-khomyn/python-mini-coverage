@@ -23,7 +23,6 @@ class TestMCDCData(unittest.TestCase):
     def test_boolean_short_circuit_capture(self):
         """
         Verify that different boolean paths generate different instruction arcs.
-        This confirms the tracer is capturing data fine-grained enough for MC/DC.
         """
         code = """
 def decision(a, b):

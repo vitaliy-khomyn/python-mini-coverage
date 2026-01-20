@@ -94,7 +94,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         }
     }
 
-    // handle OPCODE event (MC/DC) - runs for both LINE and OPCODE events
+    // handle OPCODE event - runs for both LINE and OPCODE events
     if (handle_opcode_event(self, frame, filename, cid) < 0) {
         Py_DECREF(cid);
         Py_DECREF(filename);

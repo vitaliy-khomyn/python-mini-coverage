@@ -8,7 +8,6 @@ class TestConditionCoverage(TestMetricsBase):
 
     def get_conditions(self, code, ignored=None):
         ignored = ignored or set()
-        # FIX: Use compile_code for Bytecode/MC/DC analysis
         co = self.compile_code(code)
         return self.metric.get_possible_elements(co, ignored)
 

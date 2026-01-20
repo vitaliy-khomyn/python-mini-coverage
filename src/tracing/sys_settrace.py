@@ -59,7 +59,7 @@ class SysSetTraceTracer(BaseTracer):
                 lineno = frame.f_lineno
                 self.engine._record_line(filename, lineno, cid)
 
-            # 2. opcode trace (for MC/DC)
+            # 2. opcode trace
             current_lasti = frame.f_lasti
             self.engine._record_opcode(filename, frame.f_code.co_firstlineno, current_lasti, cid)
 

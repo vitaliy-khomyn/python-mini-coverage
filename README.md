@@ -1,11 +1,11 @@
 # **MiniCoverage**
 
-MiniCoverage is a modern code coverage tool designed for Python developers who need more than just line counts. While it started as a lightweight alternative to established frameworks, its primary goal is to serve as a platform for **further testing** and validation of new coverage metrics. It has evolved into a robust engine capable of advanced analysis features like Modified Condition/Decision Coverage (MC/DC) and multiprocessing support, all while maintaining a low performance overhead.  
+MiniCoverage is a modern code coverage tool designed for Python developers who need more than just line counts. While it started as a lightweight alternative to established frameworks, its primary goal is to serve as a platform for **further testing** and validation of new coverage metrics. It has evolved into a robust engine capable of advanced analysis features like Condition Coverage and multiprocessing support, all while maintaining a low performance overhead.  
 The philosophy is simple: coverage tools should be invisible until needed, and when needed, accurate code execution data should be provided to validate new testing methodologies.
 
 ## **Overview**
 
-At its core, MiniCoverage instruments Python code to track exactly which parts are executed during tests. Unlike simple tracers that only look at line numbers, MiniCoverage digs deeper into the Python bytecode. This enables verification that complex boolean logic was fully exercised and that the application behaves correctly even across multiple threads and processes.  
+At its core, MiniCoverage instruments Python code to track exactly which parts are executed during tests. Unlike simple tracers that only look at line numbers, MiniCoverage digs deeper into the Python bytecode. This enables verification that all boolean outcomes in complex logic were fully exercised and that the application behaves correctly even across multiple threads and processes.  
 A hybrid approach to tracing is used. For maximum performance, the critical path of execution tracking is handled by a dedicated C extension. If that is not available, or if running on a newer Python version that supports it (3.12+), the tool automatically switches to the most efficient available method, such as sys.monitoring or a Python-based fallback.
 
 ## **Installation and Setup**
@@ -72,9 +72,9 @@ exclude_lines = ["pragma: no cover"]
 ```
 ## **Key Features**
 
-### ** MC/DC Support**
+### **Condition Coverage Support**
 
-Most tools stop at Branch Coverage, which checks if an if statement went both True and False. MiniCoverage goes further by analyzing the bytecode to support Modified Condition/Decision Coverage. This means if a complex condition exists like if A and B, verification is performed to ensure that A and B were evaluated independently, ensuring robust testing for critical logic.
+Most tools stop at Branch Coverage, which checks if an if statement went both True and False. MiniCoverage goes further by analyzing the bytecode to support Condition Coverage. This means if a complex condition exists like if A and B, verification is performed to ensure that both A and B evaluated to both True and False during execution, ensuring robust testing for critical logic.
 
 ### **Concurrency Support**
 

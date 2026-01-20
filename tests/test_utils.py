@@ -54,7 +54,7 @@ class MockFrame:
     def __init__(self, filename, lineno, code_name="<module>"):
         self.f_lineno = lineno
         self.f_code = MockCode(filename, code_name)
-        # added for Bytecode/MC/DC support
+        # added for bytecode support
         self.f_lasti = 0
         self.f_trace_opcodes = False
 

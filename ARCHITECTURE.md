@@ -21,7 +21,7 @@ The core orchestration happens in the Engine, while the heavy lifting of data co
    This package defines what constitutes coverage. It uses a Strategy pattern where each metric class implements two methods: `get_possible_elements` (static analysis) and `calculate_stats` (dynamic analysis).  
    * `StatementCoverage`: Uses AST to find executable lines.  
    * `BranchCoverage`: Uses AST to find logical jumps.  
-   * `ConditionCoverage`: Uses Bytecode analysis (CFG) to find boolean short-circuit operators for MC/DC.  
+   * `ConditionCoverage`: Uses Bytecode analysis (CFG) to find boolean short-circuit operators for Condition Coverage.  
    * `ControlFlowGraph`: A utility that disassembles Python bytecode to build a graph of basic blocks and dominators.  
 4. Reporters (`src/reporters/`)  
    Responsible for presenting the analyzed data.  
@@ -67,7 +67,7 @@ The persistence layer uses SQLite.
   * Columns: `file_path`, `context_id`, `line_no`.  
 * **arcs**: Stores line-to-line transitions.  
   * Columns: `file_path`, `context_id`, `start_line`, `end_line`.  
-* **instruction_arcs**: Stores bytecode offset transitions (for MC/DC).  
+* **instruction_arcs**: Stores bytecode offset transitions
   * Columns: `file_path`, `context_id`, `from_offset`, `to_offset`.
 
 ## **Design Decisions**
