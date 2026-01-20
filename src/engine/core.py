@@ -287,17 +287,20 @@ class MiniCoverage:
     def _record_opcode(self, filename: str, code_id: int, current_lasti: int, cid: int) -> None:
         if not hasattr(self.thread_local, 'last_lasti'):
             self.thread_local.last_lasti = None
+            self.thread_local.last_code_id = None
             if not hasattr(self.thread_local, 'last_file'):
                 self.thread_local.last_file = None
             # do not reset last_line here as it might be set by _record_line
 
         last_lasti = self.thread_local.last_lasti
+        last_code_id = getattr(self.thread_local, 'last_code_id', None)
 
-        if last_lasti is not None and self.thread_local.last_file == filename:
+        if last_lasti is not None and self.thread_local.last_file == filename and last_code_id == code_id:
             self.trace_data.add_instruction_arc(filename, cid, code_id, last_lasti, current_lasti)
 
         self.thread_local.last_lasti = current_lasti
         self.thread_local.last_file = filename
+        self.thread_local.last_code_id = code_id
 
     def _should_trace(self, filename: str) -> bool:
         """

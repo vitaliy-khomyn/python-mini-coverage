@@ -14,7 +14,11 @@ class ControlFlowGraph:
 
     def __init__(self, code: types.CodeType):
         self.code = code
-        self.instructions = list(dis.get_instructions(code))
+        # Use show_caches=True to ensure we see all instruction slots (Python 3.11+)
+        if sys.version_info >= (3, 11):
+            self.instructions = list(dis.get_instructions(code, show_caches=True))
+        else:
+            self.instructions = list(dis.get_instructions(code))
         self.offset_to_instr_idx = {instr.offset: i for i, instr in enumerate(self.instructions)}
 
         self.leaders = self._find_leaders()

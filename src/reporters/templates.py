@@ -34,7 +34,7 @@ def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_
         <strong>Total Coverage:</strong> 
         Statements: <span class="{_get_css_class(stmt_pct)}">{stmt_pct:.1f}% ({stmt_ratio})</span> | 
         Branches: <span class="{_get_css_class(branch_pct)}">{branch_pct:.1f}% ({branch_ratio})</span> | 
-        Conditions: <span class="{_get_css_class(cond_pct)}">{cond_pct:.1f}% ({cond_ratio})</span>
+        Condition Coverage: <span class="{_get_css_class(cond_pct)}">{cond_pct:.1f}% ({cond_ratio})</span>
     </div>
     <table>
         <thead>
@@ -42,7 +42,7 @@ def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_
                 <th>File</th>
                 <th class="numeric">Statements</th>
                 <th class="numeric">Branches</th>
-                <th class="numeric">Conditions</th>
+                <th class="numeric">Condition Coverage</th>
             </tr>
         </thead>
         <tbody>
