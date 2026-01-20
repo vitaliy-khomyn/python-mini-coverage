@@ -45,10 +45,12 @@ class BranchCoverage(CoverageMetric):
         if isinstance(node, ast.If):
             start = node.lineno
             if node.body:
-                arcs.add((start, node.body[0].lineno))
+                if node.body[0].lineno != start:
+                    arcs.add((start, node.body[0].lineno))
                 self._scan_body(node.body, arcs, next_lineno, ignored_lines)
             if node.orelse:
-                arcs.add((start, node.orelse[0].lineno))
+                if node.orelse[0].lineno != start:
+                    arcs.add((start, node.orelse[0].lineno))
                 self._scan_body(node.orelse, arcs, next_lineno, ignored_lines)
             else:
                 if next_lineno:
