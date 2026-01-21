@@ -1,8 +1,9 @@
 import types
 import collections
+import dis
+import sys
 from typing import Set, Tuple, Optional, Dict, Any, List
 from .base import CoverageMetric
-from .cfg import ControlFlowGraph
 
 
 class ConditionCoverage(CoverageMetric):
@@ -62,6 +63,12 @@ class ConditionCoverage(CoverageMetric):
         fall_val = "False" if jump_val == "True" else "True"
         return jump_val, fall_val
 
+    def _get_instructions(self, co: types.CodeType) -> List[Any]:
+        # Use show_caches=True to ensure we see all instruction slots (Python 3.11+)
+        if sys.version_info >= (3, 11):
+            return list(dis.get_instructions(co, show_caches=True))
+        return list(dis.get_instructions(co))
+
     def _find_next_instr(self, instructions: List[Any], current_idx: int) -> Optional[int]:
         """Find the offset of the next 'real' instruction, skipping pseudo-ops."""
         next_idx = current_idx + 1
@@ -74,10 +81,10 @@ class ConditionCoverage(CoverageMetric):
 
     def _analyze_boolean_jumps(self, co: types.CodeType, arcs: Set[Tuple[int, int, int]]) -> None:
         # instructions to find offsets
-        cfg = ControlFlowGraph(co)
+        instructions = self._get_instructions(co)
         code_id = co.co_firstlineno
 
-        for i, instr in enumerate(cfg.instructions):
+        for i, instr in enumerate(instructions):
             # instructions relevant for boolean logic
             # includes python 3.11+ directional variants
             is_bool_jump = instr.opname in self.BOOL_OPS
@@ -89,7 +96,7 @@ class ConditionCoverage(CoverageMetric):
 
                 # 2. fallthrough arc (Jump Not Taken)
                 # ensure we don't go out of bounds
-                next_offset = self._find_next_instr(cfg.instructions, i)
+                next_offset = self._find_next_instr(instructions, i)
                 if next_offset is not None:
                     arcs.add((code_id, instr.offset, next_offset))
 
@@ -118,7 +125,7 @@ class ConditionCoverage(CoverageMetric):
 
             code_id = co.co_firstlineno
             try:
-                cfg = ControlFlowGraph(co)
+                instructions = self._get_instructions(co)
             except Exception:
                 return
 
@@ -132,13 +139,13 @@ class ConditionCoverage(CoverageMetric):
                             offset_to_line[off] = line
 
             line_ops = collections.defaultdict(list)
-            for i, instr in enumerate(cfg.instructions):
+            for i, instr in enumerate(instructions):
                 if instr.opname in self.BOOL_OPS:
                     lineno = offset_to_line.get(instr.offset, co.co_firstlineno)
                     if lineno and lineno > 0:
                         # We need next_offset to identify the fallthrough arc
                         next_offset = None
-                        next_offset = self._find_next_instr(cfg.instructions, i)
+                        next_offset = self._find_next_instr(instructions, i)
 
                         line_ops[lineno].append({
                             'instr': instr,
