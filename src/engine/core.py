@@ -338,6 +338,10 @@ class MiniCoverage:
         sys.argv = [script_path] + (script_args if script_args else [])
         sys.path.insert(0, script_dir)
 
+        # ensure project root is in sys.path to support imports from root (like python -m)
+        if self.project_root not in sys.path:
+            sys.path.insert(0, self.project_root)
+
         # create a module for the script to support multiprocessing pickling
         main_mod = types.ModuleType("__main__")
         main_mod.__file__ = abs_script_path
