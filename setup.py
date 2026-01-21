@@ -20,8 +20,7 @@ setup(
     author='Vitaliy Khomyn',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    package_dir={'': 'src'},
-    packages=find_packages(where='src'),
+    packages=find_packages(include=['src', 'src.*']),
     ext_modules=[module],
     install_requires=install_requires,
     entry_points={
