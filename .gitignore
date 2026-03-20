@@ -218,3 +218,6 @@ __marimo__/
 # Testing is happening in place...
 identifier.sqlite
 coverage.json
+
+# graphs
+graphs/*
