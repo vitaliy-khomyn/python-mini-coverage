@@ -4,6 +4,7 @@ from .statement import StatementCoverage
 from .branch import BranchCoverage
 from .condition import ConditionCoverage
 from .bytecode import BytecodeControlFlow
+from .function import FunctionCoverage
 
 __all__ = [
     "CoverageMetric",
@@ -12,4 +13,5 @@ __all__ = [
     "BranchCoverage",
     "ConditionCoverage",
     "BytecodeControlFlow",
+    "FunctionCoverage"
 ]

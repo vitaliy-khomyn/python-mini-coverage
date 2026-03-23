@@ -23,13 +23,14 @@ from .trace_data import TraceContainer
 from .path_manager import PathManager
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
-from ..metrics import StatementCoverage, BranchCoverage, ConditionCoverage
+from ..metrics import StatementCoverage, BranchCoverage, ConditionCoverage, FunctionCoverage
 from .storage import CoverageStorage
 
 _OriginalProcess = multiprocessing.Process
 
 # thread-local storage to prevent race conditions when starting multiple engines
 _config_local = threading.local()
+
 
 class CoverageProcess(_OriginalProcess):
     # class-level config to support pickling (set by _patch_multiprocessing)
@@ -101,7 +102,7 @@ class MiniCoverage:
         self.storage = CoverageStorage(self.config.data_file)
 
         self.parser = SourceParser()
-        self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage()]
+        self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage(), FunctionCoverage()]
         # ensure excluded files are also normalized
         self.excluded_files: Set[str] = set()
 
