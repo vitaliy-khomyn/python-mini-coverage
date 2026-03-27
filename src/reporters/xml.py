@@ -21,6 +21,8 @@ class XmlReporter(BaseReporter):
         total_lines_covered = 0
         total_branches_valid = 0
         total_branches_covered = 0
+        total_funcs_valid = 0
+        total_funcs_covered = 0
 
         for file_res in results.values():
             stmt = file_res.get('Statement')
@@ -33,14 +35,23 @@ class XmlReporter(BaseReporter):
                 total_branches_valid += len(branch['possible'])
                 total_branches_covered += len(branch['executed'])
 
+            func = file_res.get('Function')
+            if func:
+                total_funcs_valid += len(func.get('possible', []))
+                total_funcs_covered += len(func.get('executed', []))
+
         line_rate = (total_lines_covered / total_lines_valid) if total_lines_valid > 0 else 1.0
         branch_rate = (total_branches_covered / total_branches_valid) if total_branches_valid > 0 else 1.0
+        func_rate = (total_funcs_covered / total_funcs_valid) if total_funcs_valid > 0 else 1.0
 
         root = ET.Element("coverage")
         root.set("line-rate", str(line_rate))
         root.set("branch-rate", str(branch_rate))
+        # Non-standard, but useful for summary
+        root.set("function-rate", str(func_rate))
         root.set("lines-covered", str(total_lines_covered))
         root.set("lines-valid", str(total_lines_valid))
+        root.set("functions-covered", str(total_funcs_covered))
         root.set("branches-covered", str(total_branches_covered))
         root.set("branches-valid", str(total_branches_valid))
         root.set("complexity", "0")
@@ -78,6 +89,27 @@ class XmlReporter(BaseReporter):
             file_branch_rate = (branch['pct'] / 100.0) if branch else 0.0
             cls.set("branch-rate", str(file_branch_rate))
             cls.set("complexity", "0")
+
+            methods_elem = ET.SubElement(cls, "methods")
+            func_data = file_data.get('Function')
+            if func_data:
+                all_funcs = func_data.get('possible', set())
+                hit_funcs = func_data.get('executed', set())
+
+                for func_tuple in sorted(list(all_funcs), key=lambda f: f[1]):
+                    func_name, def_line, _ = func_tuple
+
+                    method_elem = ET.SubElement(methods_elem, "method")
+                    method_elem.set("name", func_name)
+                    method_elem.set("signature", "()")
+                    is_hit = func_tuple in hit_funcs
+                    method_elem.set("line-rate", "1.0" if is_hit else "0.0")
+                    method_elem.set("branch-rate", "0.0")  # Not measured per-function
+
+                    method_lines_elem = ET.SubElement(method_elem, "lines")
+                    line_elem = ET.SubElement(method_lines_elem, "line")
+                    line_elem.set("number", str(def_line))
+                    line_elem.set("hits", "1" if is_hit else "0")
 
             lines_elem = ET.SubElement(cls, "lines")
 

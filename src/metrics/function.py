@@ -39,23 +39,26 @@ class FunctionCoverage(CoverageMetric):
         Calculates coverage stats for functions.
         'executed_elements' for this metric is the set of executed line numbers.
         """
-        total = len(possible_elements)
+        if not possible_elements:
+            return {
+                'pct': 100.0, 'missing': set(), 'executed': set(),
+                'possible': set(), 'ratio': "0/0"
+            }
+
         covered_elements = {
             func for func in possible_elements if func[2] in executed_elements
         }
-        covered = len(covered_elements)
         missing_elements = possible_elements - covered_elements
 
-        percentage = (covered / total * 100) if total > 0 else 100.0
+        pct = (len(covered_elements) / len(possible_elements)) * 100 if possible_elements else 100.0
+        ratio = f"{len(covered_elements)}/{len(possible_elements)}"
 
         return {
-            "total": total,
-            "covered": covered,
-            "missing": len(missing_elements),
-            "percentage": percentage,
-            "missing_elements": missing_elements,
-            "executed": covered,
-            "executed_elements": covered_elements,
+            'pct': pct,
+            'missing': missing_elements,
+            'executed': covered_elements,
+            'possible': possible_elements,
+            'ratio': ratio
         }
 
     def map_missing_elements(

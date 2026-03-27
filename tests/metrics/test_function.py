@@ -78,11 +78,11 @@ async def my_async_func():
         executed_lines = {3, 10, 12}  # f1 is hit, f2 is not
         stats = self.metric.calculate_stats(possible, executed_lines)
 
-        self.assertEqual(stats['total'], 2)
-        self.assertEqual(stats['covered'], 1)
-        self.assertEqual(stats['missing'], 1)
-        self.assertEqual(stats['percentage'], 50.0)
-        self.assertEqual(stats['missing_elements'], {("f2", 5, 6)})
+        self.assertEqual(stats['possible'], possible)
+        self.assertEqual(stats['executed'], {("f1", 2, 3)})
+        self.assertEqual(stats['missing'], {("f2", 5, 6)})
+        self.assertEqual(stats['pct'], 50.0)
+        self.assertEqual(stats['ratio'], "1/2")
 
     def test_map_missing_elements(self):
         missing = {("my_func", 10, 11)}

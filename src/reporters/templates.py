@@ -3,7 +3,7 @@ HTML templates and rendering helpers for the HTML reporter.
 """
 
 
-def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_ratio, rows):
+def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_ratio, func_pct, func_ratio, rows):
     return f"""
 <!DOCTYPE html>
 <html>
@@ -34,7 +34,8 @@ def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_
         <strong>Total Coverage:</strong> 
         Statements: <span class="{_get_css_class(stmt_pct)}">{stmt_pct:.1f}% ({stmt_ratio})</span> | 
         Branches: <span class="{_get_css_class(branch_pct)}">{branch_pct:.1f}% ({branch_ratio})</span> | 
-        Condition Coverage: <span class="{_get_css_class(cond_pct)}">{cond_pct:.1f}% ({cond_ratio})</span>
+        Conditions: <span class="{_get_css_class(cond_pct)}">{cond_pct:.1f}% ({cond_ratio})</span> |
+        Functions: <span class="{_get_css_class(func_pct)}">{func_pct:.1f}% ({func_ratio})</span>
     </div>
     <table>
         <thead>
@@ -42,7 +43,8 @@ def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_
                 <th>File</th>
                 <th class="numeric">Statements</th>
                 <th class="numeric">Branches</th>
-                <th class="numeric">Condition Coverage</th>
+                <th class="numeric">Conditions</th>
+                <th class="numeric">Functions</th>
             </tr>
         </thead>
         <tbody>
@@ -54,13 +56,14 @@ def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_
 """
 
 
-def render_index_row(link, filename, stmt_data, branch_data, cond_data):
+def render_index_row(link, filename, stmt_data, branch_data, cond_data, func_data):
     return f"""
     <tr>
         <td><a href="{link}">{filename}</a></td>
         {_render_cell(stmt_data)}
         {_render_cell(branch_data)}
         {_render_cell(cond_data)}
+        {_render_cell(func_data)}
     </tr>
     """
 

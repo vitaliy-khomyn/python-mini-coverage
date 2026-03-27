@@ -10,7 +10,7 @@ class ConsoleReporter(BaseReporter):
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
         print("\n" + "=" * 115)
-        headers = f"{'File':<40} | {'Stmt':>6} | {'Branch':>6} | {'Cond':>6} | {'Missing'}"
+        headers = f"{'File':<40} | {'Stmt':>6} | {'Branch':>6} | {'Cond':>6} | {'Func':>6} | {'Missing'}"
         print(headers)
         print("-" * 115)
 
@@ -19,13 +19,15 @@ class ConsoleReporter(BaseReporter):
             stmt_data = file_data.get('Statement')
             branch_data = file_data.get('Branch')
             cond_data = file_data.get('Condition')
+            func_data = file_data.get('Function')
 
             if stmt_data:
-                self._print_row(filename, stmt_data, branch_data, cond_data, project_root)
+                self._print_row(filename, stmt_data, branch_data, cond_data, func_data, project_root)
         print("=" * 115)
 
     def _print_row(self, filename: str, stmt_data: CoverageStats, branch_data: Optional[CoverageStats],
-                   cond_data: Optional[CoverageStats], project_root: str) -> None:
+                   cond_data: Optional[CoverageStats], func_data: Optional[CoverageStats],
+                   project_root: str) -> None:
         rel_name = os.path.relpath(filename, project_root)
 
         stmt_pct = stmt_data['pct']
@@ -47,6 +49,10 @@ class ConsoleReporter(BaseReporter):
             if cond_data.get('possible'):
                 cond_str = f"{int(cond_data['pct'])}%"
 
+        func_str = "-"
+        if func_data and func_data.get('possible'):
+            func_str = f"{int(func_data['pct'])}%"
+
         missing_items = []
 
         if stmt_miss:
@@ -62,6 +68,11 @@ class ConsoleReporter(BaseReporter):
             else:
                 missing_items.append(f"Br: {', '.join(arcs_str)}")
 
+        if func_data and func_data.get('missing'):
+            missing_func_count = len(func_data['missing'])
+            if missing_func_count > 0:
+                missing_items.append(f"{missing_func_count} funcs")
+
         miss_str = "; ".join(missing_items)
         if not miss_str:
             miss_str = ""
@@ -71,4 +82,4 @@ class ConsoleReporter(BaseReporter):
         else:
             branch_str = f"{branch_pct:>3.0f}%"
 
-        print(f"{rel_name:<40} | {stmt_pct:>5.0f}% | {branch_str:>6} | {cond_str:>6} | {miss_str}")
+        print(f"{rel_name:<40} | {stmt_pct:>5.0f}% | {branch_str:>6} | {cond_str:>6} | {func_str:>6} | {miss_str}")

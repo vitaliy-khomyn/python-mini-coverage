@@ -95,6 +95,9 @@ class Analyzer:
                     # condition coverage needs Code Object + Instruction Arcs
                     possible = metric.get_possible_elements(code_obj, ignored_lines)  # type: ignore
                     executed = aggregated_instr
+                elif metric.get_name() == "Function":
+                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
+                    executed = aggregated_lines
 
                 stats = metric.calculate_stats(possible, executed)
 
