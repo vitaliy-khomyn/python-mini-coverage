@@ -80,6 +80,21 @@ class FunctionVisitor(ast.NodeVisitor):
         self.ignored_lines = ignored_lines
         self.functions: Set[FunctionElement] = set()
 
+    def _is_docstring(self, stmt: ast.stmt) -> bool:
+        """
+        Checks if an AST statement is a docstring.
+        This is compatible with Python versions before and after 3.8.
+        """
+        if not isinstance(stmt, ast.Expr):
+            return False
+
+        # Python 3.8+ uses ast.Constant for strings
+        if isinstance(stmt.value, ast.Constant):
+            return isinstance(stmt.value.value, str)
+
+        # Python < 3.8 used ast.Str
+        return hasattr(ast, 'Str') and isinstance(stmt.value, ast.Str)
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._analyze_function(node)
         self.generic_visit(node)
@@ -92,7 +107,7 @@ class FunctionVisitor(ast.NodeVisitor):
         if node.lineno in self.ignored_lines:
             return
 
-        first_exec_line = next((stmt.lineno for stmt in node.body if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, (ast.Str, ast.Constant)))), None)
+        first_exec_line = next((stmt.lineno for stmt in node.body if not self._is_docstring(stmt)), None)
 
         if first_exec_line:
             self.functions.add((node.name, node.lineno, first_exec_line))
