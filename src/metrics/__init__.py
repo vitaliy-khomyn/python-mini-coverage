@@ -5,6 +5,8 @@ from .branch import BranchCoverage
 from .condition import ConditionCoverage
 from .bytecode import BytecodeControlFlow
 from .function import FunctionCoverage
+from .loop import LoopCoverage
+
 
 __all__ = [
     "CoverageMetric",
@@ -13,5 +15,6 @@ __all__ = [
     "BranchCoverage",
     "ConditionCoverage",
     "BytecodeControlFlow",
-    "FunctionCoverage"
+    "FunctionCoverage",
+    "LoopCoverage"
 ]

@@ -23,7 +23,7 @@ from .trace_data import TraceContainer
 from .path_manager import PathManager
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
-from ..metrics import StatementCoverage, BranchCoverage, ConditionCoverage, FunctionCoverage
+from ..metrics import StatementCoverage, BranchCoverage, ConditionCoverage, FunctionCoverage, LoopCoverage
 from .storage import CoverageStorage
 
 _OriginalProcess = multiprocessing.Process
@@ -102,7 +102,13 @@ class MiniCoverage:
         self.storage = CoverageStorage(self.config.data_file)
 
         self.parser = SourceParser()
-        self.metrics = [StatementCoverage(), BranchCoverage(), ConditionCoverage(), FunctionCoverage()]
+        self.metrics = [
+            StatementCoverage(),
+            BranchCoverage(),
+            ConditionCoverage(),
+            FunctionCoverage(),
+            LoopCoverage(),
+        ]
         # ensure excluded files are also normalized
         self.excluded_files: Set[str] = set()
 
