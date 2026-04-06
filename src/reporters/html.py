@@ -28,7 +28,8 @@ class HtmlReporter(BaseReporter):
             'stmt': {'possible': 0, 'missing': 0},
             'branch': {'possible': 0, 'missing': 0},
             'cond': {'possible': 0, 'missing': 0},
-            'func': {'possible': 0, 'missing': 0}
+            'func': {'possible': 0, 'missing': 0},
+            'loop': {'possible': 0, 'missing': 0}
         }
 
         rows = ""
@@ -40,6 +41,7 @@ class HtmlReporter(BaseReporter):
             branch = results[filename].get('Branch', {})
             cond = results[filename].get('Condition', {})
             func = results[filename].get('Function', {})
+            loop = results[filename].get('Loop', {})
 
             totals['stmt']['possible'] += len(stmt.get('possible', []))
             totals['stmt']['missing'] += len(stmt.get('missing', []))
@@ -59,6 +61,9 @@ class HtmlReporter(BaseReporter):
             totals['func']['possible'] += len(func.get('possible', []))
             totals['func']['missing'] += len(func.get('missing', []))
 
+            totals['loop']['possible'] += len(loop.get('possible', []))
+            totals['loop']['missing'] += len(loop.get('missing', []))
+
             # calculate percentages for this file
             # ensure pct exists even if empty
             stmt.setdefault('pct', 0)
@@ -73,7 +78,8 @@ class HtmlReporter(BaseReporter):
                 stmt,
                 branch,
                 cond,
-                func
+                func,
+                loop
             )
 
         # calculate total percentages
@@ -96,11 +102,15 @@ class HtmlReporter(BaseReporter):
         total_func_pct = calc_pct(totals['func']['possible'], totals['func']['missing'])
         total_func_ratio = calc_ratio(totals['func']['possible'], totals['func']['missing'])
 
+        total_loop_pct = calc_pct(totals['loop']['possible'], totals['loop']['missing'])
+        total_loop_ratio = calc_ratio(totals['loop']['possible'], totals['loop']['missing'])
+
         html_content = templates.render_index(
             total_stmt_pct, total_stmt_ratio,
             total_branch_pct, total_branch_ratio,
             total_cond_pct, total_cond_ratio,
             total_func_pct, total_func_ratio,
+            total_loop_pct, total_loop_ratio,
             rows
         )
 
@@ -133,6 +143,12 @@ class HtmlReporter(BaseReporter):
             # Recreate the map from the raw missing elements tuple: (name, def_line, first_exec_line)
             missing_functions = {func[1]: f"Function '{func[0]}' was not called" for func in func_data['missing']}
 
+        loop_data = data.get('Loop')
+        missing_loops = collections.defaultdict(list)
+        if loop_data and loop_data.get('missing'):
+            for start, end in loop_data['missing']:
+                missing_loops[start].append(end)
+
         try:
             with open(filename, 'r', encoding='utf-8') as f:
                 source_lines = f.readlines()
@@ -154,6 +170,11 @@ class HtmlReporter(BaseReporter):
             if lineno in missing_functions:
                 css_class = "miss"
                 annotation += f"<span class='annotate'>{html.escape(missing_functions[lineno])}</span>"
+
+            if lineno in missing_loops:
+                if css_class == "hit":
+                    css_class = "partial"
+                annotation += "<span class='annotate'>Missed loop path(s)</span>"
 
             if lineno in missing_branches:
                 targets = missing_branches[lineno]

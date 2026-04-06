@@ -3,7 +3,7 @@ HTML templates and rendering helpers for the HTML reporter.
 """
 
 
-def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_ratio, func_pct, func_ratio, rows):
+def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_ratio, func_pct, func_ratio, loop_pct, loop_ratio, rows):
     return f"""
 <!DOCTYPE html>
 <html>
@@ -31,11 +31,12 @@ def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_
 <body>
     <h1>Coverage Report</h1>
     <div class="summary">
-        <strong>Total Coverage:</strong> 
-        Statements: <span class="{_get_css_class(stmt_pct)}">{stmt_pct:.1f}% ({stmt_ratio})</span> | 
-        Branches: <span class="{_get_css_class(branch_pct)}">{branch_pct:.1f}% ({branch_ratio})</span> | 
+        <strong>Total Coverage:</strong>
+        Statements: <span class="{_get_css_class(stmt_pct)}">{stmt_pct:.1f}% ({stmt_ratio})</span> |
+        Branches: <span class="{_get_css_class(branch_pct)}">{branch_pct:.1f}% ({branch_ratio})</span> |
         Conditions: <span class="{_get_css_class(cond_pct)}">{cond_pct:.1f}% ({cond_ratio})</span> |
-        Functions: <span class="{_get_css_class(func_pct)}">{func_pct:.1f}% ({func_ratio})</span>
+        Functions: <span class="{_get_css_class(func_pct)}">{func_pct:.1f}% ({func_ratio})</span> |
+        Loops: <span class="{_get_css_class(loop_pct)}">{loop_pct:.1f}% ({loop_ratio})</span>
     </div>
     <table>
         <thead>
@@ -45,6 +46,7 @@ def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_
                 <th class="numeric">Branches</th>
                 <th class="numeric">Conditions</th>
                 <th class="numeric">Functions</th>
+                <th class="numeric">Loops</th>
             </tr>
         </thead>
         <tbody>
@@ -56,7 +58,7 @@ def render_index(stmt_pct, stmt_ratio, branch_pct, branch_ratio, cond_pct, cond_
 """
 
 
-def render_index_row(link, filename, stmt_data, branch_data, cond_data, func_data):
+def render_index_row(link, filename, stmt_data, branch_data, cond_data, func_data, loop_data):
     return f"""
     <tr>
         <td><a href="{link}">{filename}</a></td>
@@ -64,6 +66,7 @@ def render_index_row(link, filename, stmt_data, branch_data, cond_data, func_dat
         {_render_cell(branch_data)}
         {_render_cell(cond_data)}
         {_render_cell(func_data)}
+        {_render_cell(loop_data)}
     </tr>
     """
 
@@ -71,7 +74,6 @@ def render_index_row(link, filename, stmt_data, branch_data, cond_data, func_dat
 def _render_cell(metric_data):
     if not metric_data or not metric_data.get('possible'):
         return '<td class="numeric na">N/A</td>'
-
 
     pct = metric_data.get('pct', 0)
     ratio = metric_data.get('ratio', "0/0")

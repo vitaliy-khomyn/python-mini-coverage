@@ -23,6 +23,8 @@ class XmlReporter(BaseReporter):
         total_branches_covered = 0
         total_funcs_valid = 0
         total_funcs_covered = 0
+        total_loops_valid = 0
+        total_loops_covered = 0
 
         for file_res in results.values():
             stmt = file_res.get('Statement')
@@ -40,15 +42,22 @@ class XmlReporter(BaseReporter):
                 total_funcs_valid += len(func.get('possible', []))
                 total_funcs_covered += len(func.get('executed', []))
 
+            loop = file_res.get('Loop')
+            if loop:
+                total_loops_valid += len(loop.get('possible', []))
+                total_loops_covered += len(loop.get('executed', []))
+
         line_rate = (total_lines_covered / total_lines_valid) if total_lines_valid > 0 else 1.0
         branch_rate = (total_branches_covered / total_branches_valid) if total_branches_valid > 0 else 1.0
         func_rate = (total_funcs_covered / total_funcs_valid) if total_funcs_valid > 0 else 1.0
+        loop_rate = (total_loops_covered / total_loops_valid) if total_loops_valid > 0 else 1.0
 
         root = ET.Element("coverage")
         root.set("line-rate", str(line_rate))
         root.set("branch-rate", str(branch_rate))
         # Non-standard, but useful for summary
         root.set("function-rate", str(func_rate))
+        root.set("loop-rate", str(loop_rate))
         root.set("lines-covered", str(total_lines_covered))
         root.set("lines-valid", str(total_lines_valid))
         root.set("functions-covered", str(total_funcs_covered))

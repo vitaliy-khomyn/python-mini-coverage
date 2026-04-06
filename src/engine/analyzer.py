@@ -32,8 +32,8 @@ class Analyzer:
         # 1. identify all unique files by normalized path to handle duplicates (raw vs normalized)
         file_map = defaultdict(list)
         all_raw_files = (
-            set(trace_data['lines'].keys()) | \
-            set(trace_data['arcs'].keys()) | \
+            set(trace_data['lines'].keys()) |
+            set(trace_data['arcs'].keys()) |
             set(trace_data['instruction_arcs'].keys())
         )
 
@@ -98,6 +98,9 @@ class Analyzer:
                 elif metric.get_name() == "Function":
                     possible = metric.get_possible_elements(ast_tree, ignored_lines)
                     executed = aggregated_lines
+                elif metric.get_name() == "Loop":
+                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
+                    executed = aggregated_arcs
 
                 stats = metric.calculate_stats(possible, executed)
 
