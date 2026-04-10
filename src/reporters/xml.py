@@ -17,40 +17,31 @@ class XmlReporter(BaseReporter):
     def generate(self, results: AnalysisResults, project_root: str) -> None:
         print(f"Generating XML report to {self.output_file}...")
 
-        total_lines_valid = 0
-        total_lines_covered = 0
-        total_branches_valid = 0
-        total_branches_covered = 0
-        total_funcs_valid = 0
-        total_funcs_covered = 0
-        total_loops_valid = 0
-        total_loops_covered = 0
+        METRICS_CONFIG = [
+            {'key': 'lines', 'name': 'Statement'},
+            {'key': 'branches', 'name': 'Branch'},
+            {'key': 'functions', 'name': 'Function'},
+            {'key': 'loops', 'name': 'Loop'},  # Non-standard
+        ]
+        totals = {f"{cfg['key']}_valid": 0 for cfg in METRICS_CONFIG}
+        totals.update({f"{cfg['key']}_covered": 0 for cfg in METRICS_CONFIG})
 
         for file_res in results.values():
-            stmt = file_res.get('Statement')
-            if stmt:
-                total_lines_valid += len(stmt['possible'])
-                total_lines_covered += len(stmt['executed'])
+            for cfg in METRICS_CONFIG:
+                metric_data = file_res.get(cfg['name'])
+                if metric_data:
+                    totals[f"{cfg['key']}_valid"] += len(metric_data.get('possible', []))
+                    totals[f"{cfg['key']}_covered"] += len(metric_data.get('executed', []))
 
-            branch = file_res.get('Branch')
-            if branch:
-                total_branches_valid += len(branch['possible'])
-                total_branches_covered += len(branch['executed'])
+        def calc_rate(key):
+            valid = totals.get(f"{key}_valid", 0)
+            covered = totals.get(f"{key}_covered", 0)
+            return (covered / valid) if valid > 0 else 1.0
 
-            func = file_res.get('Function')
-            if func:
-                total_funcs_valid += len(func.get('possible', []))
-                total_funcs_covered += len(func.get('executed', []))
-
-            loop = file_res.get('Loop')
-            if loop:
-                total_loops_valid += len(loop.get('possible', []))
-                total_loops_covered += len(loop.get('executed', []))
-
-        line_rate = (total_lines_covered / total_lines_valid) if total_lines_valid > 0 else 1.0
-        branch_rate = (total_branches_covered / total_branches_valid) if total_branches_valid > 0 else 1.0
-        func_rate = (total_funcs_covered / total_funcs_valid) if total_funcs_valid > 0 else 1.0
-        loop_rate = (total_loops_covered / total_loops_valid) if total_loops_valid > 0 else 1.0
+        line_rate = calc_rate('lines')
+        branch_rate = calc_rate('branches')
+        func_rate = calc_rate('functions')
+        loop_rate = calc_rate('loops')
 
         root = ET.Element("coverage")
         root.set("line-rate", str(line_rate))
@@ -58,11 +49,12 @@ class XmlReporter(BaseReporter):
         # Non-standard, but useful for summary
         root.set("function-rate", str(func_rate))
         root.set("loop-rate", str(loop_rate))
-        root.set("lines-covered", str(total_lines_covered))
-        root.set("lines-valid", str(total_lines_valid))
-        root.set("functions-covered", str(total_funcs_covered))
-        root.set("branches-covered", str(total_branches_covered))
-        root.set("branches-valid", str(total_branches_valid))
+        root.set("lines-covered", str(totals['lines_covered']))
+        root.set("lines-valid", str(totals['lines_valid']))
+        root.set("branches-covered", str(totals['branches_covered']))
+        root.set("branches-valid", str(totals['branches_valid']))
+        root.set("functions-covered", str(totals['functions_covered']))
+        root.set("functions-valid", str(totals['functions_valid']))
         root.set("complexity", "0")
         root.set("version", "1.0")
         root.set("timestamp", str(int(time.time())))

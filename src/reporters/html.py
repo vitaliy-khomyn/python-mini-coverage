@@ -24,50 +24,46 @@ class HtmlReporter(BaseReporter):
             self._generate_file_report(filename, data, project_root)
 
     def _generate_index(self, results: AnalysisResults, project_root: str) -> None:
-        totals = {
-            'stmt': {'possible': 0, 'missing': 0},
-            'branch': {'possible': 0, 'missing': 0},
-            'cond': {'possible': 0, 'missing': 0},
-            'func': {'possible': 0, 'missing': 0},
-            'loop': {'possible': 0, 'missing': 0}
-        }
+        METRICS_CONFIG = [
+            {'key': 'stmt', 'name': 'Statement', 'display': 'Statements'},
+            {'key': 'branch', 'name': 'Branch', 'display': 'Branches'},
+            {'key': 'cond', 'name': 'Condition', 'display': 'Conditions'},
+            {'key': 'func', 'name': 'Function', 'display': 'Functions'},
+            {'key': 'loop', 'name': 'Loop', 'display': 'Loops'},
+        ]
+        totals = {m['key']: {'possible': 0, 'missing': 0} for m in METRICS_CONFIG}
 
         rows = ""
         for filename in sorted(results.keys()):
-            stmt = results[filename].get('Statement')
-            if not stmt:
+            # Collect data for all metrics for the current file
+            file_metrics_list = []
+            has_statement_data = False
+            for cfg in METRICS_CONFIG:
+                metric_data = results[filename].get(cfg['name'], {})
+                metric_data.setdefault('pct', 0)
+                metric_data.setdefault('ratio', "0/0")
+                file_metrics_list.append(metric_data)
+
+                if cfg['name'] == 'Statement' and metric_data.get('possible'):
+                    has_statement_data = True
+
+                # Aggregate totals
+                key = cfg['key']
+                if cfg['name'] == 'Condition':
+                    missing_outcomes = metric_data.get('missing_outcomes', {})
+                    if missing_outcomes:
+                        for line_stats in missing_outcomes.values():
+                            totals[key]['possible'] += line_stats.get('total', 0)
+                            totals[key]['missing'] += len(line_stats.get('missing', []))
+                    else:
+                        totals[key]['possible'] += len(metric_data.get('possible', []))
+                        totals[key]['missing'] += len(metric_data.get('missing', []))
+                else:
+                    totals[key]['possible'] += len(metric_data.get('possible', []))
+                    totals[key]['missing'] += len(metric_data.get('missing', []))
+
+            if not has_statement_data:
                 continue
-
-            branch = results[filename].get('Branch', {})
-            cond = results[filename].get('Condition', {})
-            func = results[filename].get('Function', {})
-            loop = results[filename].get('Loop', {})
-
-            totals['stmt']['possible'] += len(stmt.get('possible', []))
-            totals['stmt']['missing'] += len(stmt.get('missing', []))
-
-            totals['branch']['possible'] += len(branch.get('possible', []))
-            totals['branch']['missing'] += len(branch.get('missing', []))
-
-            missing_outcomes = cond.get('missing_outcomes', {})
-            if missing_outcomes:
-                for line_stats in missing_outcomes.values():
-                    totals['cond']['possible'] += line_stats.get('total', 0)
-                    totals['cond']['missing'] += len(line_stats.get('missing', []))
-            else:
-                totals['cond']['possible'] += len(cond.get('possible', []))
-                totals['cond']['missing'] += len(cond.get('missing', []))
-
-            totals['func']['possible'] += len(func.get('possible', []))
-            totals['func']['missing'] += len(func.get('missing', []))
-
-            totals['loop']['possible'] += len(loop.get('possible', []))
-            totals['loop']['missing'] += len(loop.get('missing', []))
-
-            # calculate percentages for this file
-            # ensure pct exists even if empty
-            stmt.setdefault('pct', 0)
-            stmt.setdefault('ratio', "0/0")
 
             rel_name = os.path.relpath(filename, project_root)
             file_html_link = f"{self._sanitize_filename(rel_name)}.html"
@@ -75,11 +71,7 @@ class HtmlReporter(BaseReporter):
             rows += templates.render_index_row(
                 file_html_link,
                 html.escape(rel_name),
-                stmt,
-                branch,
-                cond,
-                func,
-                loop
+                file_metrics_list
             )
 
         # calculate total percentages
@@ -90,29 +82,17 @@ class HtmlReporter(BaseReporter):
         def calc_ratio(poss, miss):
             return f"{poss - miss}/{poss}"
 
-        total_stmt_pct = calc_pct(totals['stmt']['possible'], totals['stmt']['missing'])
-        total_stmt_ratio = calc_ratio(totals['stmt']['possible'], totals['stmt']['missing'])
+        total_stats = []
+        for cfg in METRICS_CONFIG:
+            key = cfg['key']
+            poss, miss = totals[key]['possible'], totals[key]['missing']
+            total_stats.append({
+                'display': cfg['display'],
+                'pct': calc_pct(poss, miss),
+                'ratio': calc_ratio(poss, miss)
+            })
 
-        total_branch_pct = calc_pct(totals['branch']['possible'], totals['branch']['missing'])
-        total_branch_ratio = calc_ratio(totals['branch']['possible'], totals['branch']['missing'])
-
-        total_cond_pct = calc_pct(totals['cond']['possible'], totals['cond']['missing'])
-        total_cond_ratio = calc_ratio(totals['cond']['possible'], totals['cond']['missing'])
-
-        total_func_pct = calc_pct(totals['func']['possible'], totals['func']['missing'])
-        total_func_ratio = calc_ratio(totals['func']['possible'], totals['func']['missing'])
-
-        total_loop_pct = calc_pct(totals['loop']['possible'], totals['loop']['missing'])
-        total_loop_ratio = calc_ratio(totals['loop']['possible'], totals['loop']['missing'])
-
-        html_content = templates.render_index(
-            total_stmt_pct, total_stmt_ratio,
-            total_branch_pct, total_branch_ratio,
-            total_cond_pct, total_cond_ratio,
-            total_func_pct, total_func_ratio,
-            total_loop_pct, total_loop_ratio,
-            rows
-        )
+        html_content = templates.render_index([m['display'] for m in METRICS_CONFIG], total_stats, rows)
 
         with open(os.path.join(self.output_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(html_content)
