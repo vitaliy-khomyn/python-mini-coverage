@@ -11,6 +11,9 @@ class BranchCoverage(CoverageMetric):
     def get_name(self) -> str:
         return "Branch"
 
+    def get_required_dynamic_data(self) -> str:
+        return 'arcs'
+
     def get_possible_elements(self, ast_tree: ast.AST, ignored_lines: Set[int]) -> Set[Tuple[int, int]]:
         arcs: Set[Tuple[int, int]] = set()
         if hasattr(ast_tree, 'body'):

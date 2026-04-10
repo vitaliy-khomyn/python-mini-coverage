@@ -13,6 +13,18 @@ class CoverageMetric(ABC):
         """
         raise NotImplementedError
 
+    def get_required_static_source(self) -> str:
+        """Return 'ast' or 'code_object' to specify static analysis input."""
+        return 'ast'
+
+    def get_required_dynamic_data(self) -> str:
+        """
+        Return the key for the dynamic data this metric needs,
+        e.g., 'lines', 'arcs', 'instruction_arcs'.
+        """
+        # Default for Statement and Function coverage
+        return 'lines'
+
     def get_possible_elements(self, source: Any, ignored_lines: Set[int]) -> Set[Any]:
         """
         Analyze the source (AST or Code Object) to determine all possible coverage targets.

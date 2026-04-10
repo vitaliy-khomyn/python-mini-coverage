@@ -73,6 +73,12 @@ class Analyzer:
                 for ctx_instr in trace_data['instruction_arcs'][rf].values():
                     aggregated_instr.update(ctx_instr)
 
+            aggregated_data = {
+                'lines': aggregated_lines,
+                'arcs': aggregated_arcs,
+                'instruction_arcs': aggregated_instr
+            }
+
             # 3. parse and calculate metrics
             ast_tree, ignored_lines = self.parser.parse_source(canonical_filename, exclude_patterns)
             if not ast_tree:
@@ -82,25 +88,14 @@ class Analyzer:
 
             file_results = {}
             for metric in self.metrics:
-                possible = set()
-                executed = set()
+                static_source_type = metric.get_required_static_source()
+                dynamic_data_key = metric.get_required_dynamic_data()
 
-                if metric.get_name() == "Statement":
-                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
-                    executed = aggregated_lines
-                elif metric.get_name() == "Branch":
-                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
-                    executed = aggregated_arcs
-                elif metric.get_name() == "Condition":
-                    # condition coverage needs Code Object + Instruction Arcs
-                    possible = metric.get_possible_elements(code_obj, ignored_lines)  # type: ignore
-                    executed = aggregated_instr
-                elif metric.get_name() == "Function":
-                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
-                    executed = aggregated_lines
-                elif metric.get_name() == "Loop":
-                    possible = metric.get_possible_elements(ast_tree, ignored_lines)
-                    executed = aggregated_arcs
+                static_source = ast_tree if static_source_type == 'ast' else code_obj
+                dynamic_data = aggregated_data.get(dynamic_data_key, set())
+
+                possible = metric.get_possible_elements(static_source, ignored_lines)  # type: ignore
+                executed = dynamic_data
 
                 stats = metric.calculate_stats(possible, executed)
 

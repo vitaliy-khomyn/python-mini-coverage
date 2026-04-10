@@ -40,6 +40,12 @@ class ConditionCoverage(CoverageMetric):
     def get_name(self) -> str:
         return "Condition"
 
+    def get_required_static_source(self) -> str:
+        return 'code_object'
+
+    def get_required_dynamic_data(self) -> str:
+        return 'instruction_arcs'
+
     def get_possible_elements(
         self,
         code_obj: Optional[types.CodeType],

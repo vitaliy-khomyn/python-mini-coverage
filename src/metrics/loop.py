@@ -14,6 +14,9 @@ class LoopCoverage(CoverageMetric):
     def get_name(self) -> str:
         return "Loop"
 
+    def get_required_dynamic_data(self) -> str:
+        return 'arcs'
+
     def get_possible_elements(
         self,
         tree: ast.AST,
