@@ -114,7 +114,7 @@ class HtmlReporter(BaseReporter):
             rows
         )
 
-        with open(os.path.join(self.output_dir, "index.html"), "w") as f:
+        with open(os.path.join(self.output_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(html_content)
 
     def _generate_file_report(self, filename: str, data: FileResults, project_root: str) -> None:
@@ -210,7 +210,7 @@ class HtmlReporter(BaseReporter):
 
         html_content = templates.render_file(html.escape(rel_name), code_html)
 
-        with open(os.path.join(self.output_dir, out_name), "w") as f:
+        with open(os.path.join(self.output_dir, out_name), "w", encoding="utf-8") as f:
             f.write(html_content)
 
     def _sanitize_filename(self, path: str) -> str:
