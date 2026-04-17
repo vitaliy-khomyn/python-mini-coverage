@@ -6,6 +6,7 @@ from .condition import ConditionCoverage
 from .bytecode import BytecodeControlFlow
 from .function import FunctionCoverage
 from .loop import LoopCoverage
+from .class_coverage import ClassCoverage
 
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "ConditionCoverage",
     "BytecodeControlFlow",
     "FunctionCoverage",
-    "LoopCoverage"
+    "LoopCoverage",
+    "ClassCoverage",
 ]

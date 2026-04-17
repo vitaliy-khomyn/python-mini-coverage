@@ -30,6 +30,7 @@ class HtmlReporter(BaseReporter):
             {'key': 'cond', 'name': 'Condition', 'display': 'Conditions'},
             {'key': 'func', 'name': 'Function', 'display': 'Functions'},
             {'key': 'loop', 'name': 'Loop', 'display': 'Loops'},
+            {'key': 'class', 'name': 'Class', 'display': 'Classes'},
         ]
         totals = {m['key']: {'possible': 0, 'missing': 0} for m in METRICS_CONFIG}
 
@@ -105,6 +106,12 @@ class HtmlReporter(BaseReporter):
         if not stmt_data:
             return
 
+        class_data = data.get('Class')
+        missing_classes = {}
+        if class_data and class_data.get('missing'):
+            # Recreate the map from the raw missing elements tuple: (name, def_line, init_first_line)
+            missing_classes = {cls[1]: f"Class '{cls[0]}' was not instantiated" for cls in class_data['missing']}
+
         executed_lines = stmt_data['executed']
         missing_lines = stmt_data['missing']
 
@@ -146,6 +153,10 @@ class HtmlReporter(BaseReporter):
                 css_class = "hit"
             elif lineno in missing_lines:
                 css_class = "miss"
+
+            if lineno in missing_classes:
+                css_class = "miss"
+                annotation += f"<span class='annotate'>{html.escape(missing_classes[lineno])}</span>"
 
             if lineno in missing_functions:
                 css_class = "miss"
