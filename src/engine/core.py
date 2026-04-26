@@ -24,6 +24,7 @@ from .path_manager import PathManager
 from .source_parser import SourceParser
 from .config_loader import ConfigLoader
 from ..metrics import StatementCoverage, BranchCoverage, ConditionCoverage, FunctionCoverage, LoopCoverage, ClassCoverage
+from ..metrics.call_site import CallSiteCoverage
 from .storage import CoverageStorage
 
 _OriginalProcess = multiprocessing.Process
@@ -109,6 +110,7 @@ class MiniCoverage:
             FunctionCoverage(),
             LoopCoverage(),
             ClassCoverage(),
+            CallSiteCoverage(),
         ]
         # ensure excluded files are also normalized
         self.excluded_files: Set[str] = set()

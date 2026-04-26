@@ -9,10 +9,10 @@ class ConsoleReporter(BaseReporter):
     """
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
-        print("\n" + "=" * 132)
-        headers = f"{'File':<40} | {'Stmt':>6} | {'Branch':>6} | {'Cond':>6} | {'Func':>6} | {'Loop':>6} | {'Class':>6} | {'Missing'}"
+        print("\n" + "=" * 142)
+        headers = f"{'File':<40} | {'Stmt':>6} | {'Branch':>6} | {'Cond':>6} | {'Func':>6} | {'Loop':>6} | {'Class':>6} | {'Call':>6} | {'Missing'}"
         print(headers)
-        print("-" * 132)
+        print("-" * 142)
 
         for filename in sorted(results.keys()):
             file_data = results[filename]
@@ -22,14 +22,16 @@ class ConsoleReporter(BaseReporter):
             func_data = file_data.get('Function')
             loop_data = file_data.get('Loop')
             class_data = file_data.get('Class')
+            call_data = file_data.get('Call-Site')
 
             if stmt_data:
-                self._print_row(filename, stmt_data, branch_data, cond_data, func_data, loop_data, class_data, project_root)
-        print("=" * 132)
+                self._print_row(filename, stmt_data, branch_data, cond_data, func_data, loop_data, class_data, call_data, project_root)
+        print("=" * 142)
 
     def _print_row(self, filename: str, stmt_data: CoverageStats, branch_data: Optional[CoverageStats],
                    cond_data: Optional[CoverageStats], func_data: Optional[CoverageStats],
                    loop_data: Optional[CoverageStats], class_data: Optional[CoverageStats],
+                   call_data: Optional[CoverageStats],
                    project_root: str) -> None:
         rel_name = os.path.relpath(filename, project_root)
 
@@ -64,6 +66,10 @@ class ConsoleReporter(BaseReporter):
         if class_data and class_data.get('possible'):
             class_str = f"{int(class_data['pct'])}%"
 
+        call_str = "-"
+        if call_data and call_data.get('possible'):
+            call_str = f"{int(call_data['pct'])}%"
+
         missing_items = []
 
         if stmt_miss:
@@ -94,6 +100,11 @@ class ConsoleReporter(BaseReporter):
             if missing_class_count > 0:
                 missing_items.append(f"{missing_class_count} classes")
 
+        if call_data and call_data.get('missing'):
+            missing_call_count = len(call_data['missing'])
+            if missing_call_count > 0:
+                missing_items.append(f"{missing_call_count} calls")
+
         miss_str = "; ".join(missing_items)
         if not miss_str:
             miss_str = ""
@@ -103,4 +114,4 @@ class ConsoleReporter(BaseReporter):
         else:
             branch_str = f"{branch_pct:>3.0f}%"
 
-        print(f"{rel_name:<40} | {stmt_pct:>5.0f}% | {branch_str:>6} | {cond_str:>6} | {func_str:>6} | {loop_str:>6} | {class_str:>6} | {miss_str}")
+        print(f"{rel_name:<40} | {stmt_pct:>5.0f}% | {branch_str:>6} | {cond_str:>6} | {func_str:>6} | {loop_str:>6} | {class_str:>6} | {call_str:>6} | {miss_str}")

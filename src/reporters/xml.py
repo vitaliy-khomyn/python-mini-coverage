@@ -23,6 +23,7 @@ class XmlReporter(BaseReporter):
             {'key': 'functions', 'name': 'Function'},
             {'key': 'loops', 'name': 'Loop'},  # Non-standard
             {'key': 'classes', 'name': 'Class'}, # Non-standard
+            {'key': 'calls', 'name': 'Call-Site'}, # Non-standard
         ]
         totals = {f"{cfg['key']}_valid": 0 for cfg in METRICS_CONFIG}
         totals.update({f"{cfg['key']}_covered": 0 for cfg in METRICS_CONFIG})
@@ -44,6 +45,7 @@ class XmlReporter(BaseReporter):
         func_rate = calc_rate('functions')
         loop_rate = calc_rate('loops')
         class_rate = calc_rate('classes')
+        call_rate = calc_rate('calls')
 
         root = ET.Element("coverage")
         root.set("line-rate", str(line_rate))
@@ -52,6 +54,7 @@ class XmlReporter(BaseReporter):
         root.set("function-rate", str(func_rate))
         root.set("loop-rate", str(loop_rate))
         root.set("class-rate", str(class_rate))
+        root.set("call-rate", str(call_rate))
         root.set("lines-covered", str(totals['lines_covered']))
         root.set("lines-valid", str(totals['lines_valid']))
         root.set("branches-covered", str(totals['branches_covered']))
@@ -60,6 +63,8 @@ class XmlReporter(BaseReporter):
         root.set("functions-valid", str(totals.get('functions_valid', 0)))
         root.set("classes-covered", str(totals.get('classes_covered', 0)))
         root.set("classes-valid", str(totals.get('classes_valid', 0)))
+        root.set("calls-covered", str(totals.get('calls_covered', 0)))
+        root.set("calls-valid", str(totals.get('calls_valid', 0)))
         root.set("complexity", "0")
         root.set("version", "1.0")
         root.set("timestamp", str(int(time.time())))

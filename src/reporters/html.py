@@ -31,6 +31,7 @@ class HtmlReporter(BaseReporter):
             {'key': 'func', 'name': 'Function', 'display': 'Functions'},
             {'key': 'loop', 'name': 'Loop', 'display': 'Loops'},
             {'key': 'class', 'name': 'Class', 'display': 'Classes'},
+            {'key': 'call', 'name': 'Call-Site', 'display': 'Call-Sites'},
         ]
         totals = {m['key']: {'possible': 0, 'missing': 0} for m in METRICS_CONFIG}
 
@@ -112,6 +113,12 @@ class HtmlReporter(BaseReporter):
             # Recreate the map from the raw missing elements tuple: (name, def_line, init_first_line)
             missing_classes = {cls[1]: f"Class '{cls[0]}' was not instantiated" for cls in class_data['missing']}
 
+        call_data = data.get('Call-Site')
+        missing_calls = collections.defaultdict(list)
+        if call_data and call_data.get('missing'):
+            for name, lineno in call_data['missing']:
+                missing_calls[lineno].append(name)
+
         executed_lines = stmt_data['executed']
         missing_lines = stmt_data['missing']
 
@@ -161,6 +168,12 @@ class HtmlReporter(BaseReporter):
             if lineno in missing_functions:
                 css_class = "miss"
                 annotation += f"<span class='annotate'>{html.escape(missing_functions[lineno])}</span>"
+
+            if lineno in missing_calls:
+                if css_class == "hit":
+                    css_class = "partial"
+                names = ", ".join(missing_calls[lineno])
+                annotation += f"<span class='annotate'>Missed call to: {html.escape(names)}</span>"
 
             if lineno in missing_loops:
                 if css_class == "hit":
