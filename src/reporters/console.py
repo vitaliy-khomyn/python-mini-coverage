@@ -9,10 +9,10 @@ class ConsoleReporter(BaseReporter):
     """
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
-        print("\n" + "=" * 142)
-        headers = f"{'File':<40} | {'Stmt':>6} | {'Branch':>6} | {'Cond':>6} | {'Func':>6} | {'Loop':>6} | {'Class':>6} | {'Call':>6} | {'Missing'}"
+        print("\n" + "=" * 151)
+        headers = f"{'File':<40} | {'Stmt':>6} | {'Branch':>6} | {'Cond':>6} | {'Func':>6} | {'Loop':>6} | {'Class':>6} | {'Call':>6} | {'Exc':>6} | {'Missing'}"
         print(headers)
-        print("-" * 142)
+        print("-" * 151)
 
         for filename in sorted(results.keys()):
             file_data = results[filename]
@@ -23,15 +23,16 @@ class ConsoleReporter(BaseReporter):
             loop_data = file_data.get('Loop')
             class_data = file_data.get('Class')
             call_data = file_data.get('Call-Site')
+            exc_data = file_data.get('Exception')
 
             if stmt_data:
-                self._print_row(filename, stmt_data, branch_data, cond_data, func_data, loop_data, class_data, call_data, project_root)
-        print("=" * 142)
+                self._print_row(filename, stmt_data, branch_data, cond_data, func_data, loop_data, class_data, call_data, exc_data, project_root)
+        print("=" * 151)
 
     def _print_row(self, filename: str, stmt_data: CoverageStats, branch_data: Optional[CoverageStats],
                    cond_data: Optional[CoverageStats], func_data: Optional[CoverageStats],
                    loop_data: Optional[CoverageStats], class_data: Optional[CoverageStats],
-                   call_data: Optional[CoverageStats],
+                   call_data: Optional[CoverageStats], exc_data: Optional[CoverageStats],
                    project_root: str) -> None:
         rel_name = os.path.relpath(filename, project_root)
 
@@ -70,6 +71,10 @@ class ConsoleReporter(BaseReporter):
         if call_data and call_data.get('possible'):
             call_str = f"{int(call_data['pct'])}%"
 
+        exc_str = "-"
+        if exc_data and exc_data.get('possible'):
+            exc_str = f"{int(exc_data['pct'])}%"
+
         missing_items = []
 
         if stmt_miss:
@@ -105,6 +110,11 @@ class ConsoleReporter(BaseReporter):
             if missing_call_count > 0:
                 missing_items.append(f"{missing_call_count} calls")
 
+        if exc_data and exc_data.get('missing'):
+            missing_exc_count = len(exc_data['missing'])
+            if missing_exc_count > 0:
+                missing_items.append(f"{missing_exc_count} exceptions")
+
         miss_str = "; ".join(missing_items)
         if not miss_str:
             miss_str = ""
@@ -114,4 +124,4 @@ class ConsoleReporter(BaseReporter):
         else:
             branch_str = f"{branch_pct:>3.0f}%"
 
-        print(f"{rel_name:<40} | {stmt_pct:>5.0f}% | {branch_str:>6} | {cond_str:>6} | {func_str:>6} | {loop_str:>6} | {class_str:>6} | {call_str:>6} | {miss_str}")
+        print(f"{rel_name:<40} | {stmt_pct:>5.0f}% | {branch_str:>6} | {cond_str:>6} | {func_str:>6} | {loop_str:>6} | {class_str:>6} | {call_str:>6} | {exc_str:>6} | {miss_str}")

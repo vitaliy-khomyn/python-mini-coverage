@@ -7,6 +7,7 @@ from .bytecode import BytecodeControlFlow
 from .function import FunctionCoverage
 from .loop import LoopCoverage
 from .class_coverage import ClassCoverage
+from .exception import ExceptionCoverage
 
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "FunctionCoverage",
     "LoopCoverage",
     "ClassCoverage",
+    "ExceptionCoverage",
 ]

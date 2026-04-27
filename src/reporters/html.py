@@ -32,6 +32,7 @@ class HtmlReporter(BaseReporter):
             {'key': 'loop', 'name': 'Loop', 'display': 'Loops'},
             {'key': 'class', 'name': 'Class', 'display': 'Classes'},
             {'key': 'call', 'name': 'Call-Site', 'display': 'Call-Sites'},
+            {'key': 'exc', 'name': 'Exception', 'display': 'Exceptions'},
         ]
         totals = {m['key']: {'possible': 0, 'missing': 0} for m in METRICS_CONFIG}
 
@@ -119,6 +120,11 @@ class HtmlReporter(BaseReporter):
             for name, lineno in call_data['missing']:
                 missing_calls[lineno].append(name)
 
+        exc_data = data.get('Exception')
+        missing_exceptions = set()
+        if exc_data and exc_data.get('missing'):
+            missing_exceptions = exc_data['missing']
+
         executed_lines = stmt_data['executed']
         missing_lines = stmt_data['missing']
 
@@ -174,6 +180,11 @@ class HtmlReporter(BaseReporter):
                     css_class = "partial"
                 names = ", ".join(missing_calls[lineno])
                 annotation += f"<span class='annotate'>Missed call to: {html.escape(names)}</span>"
+
+            if lineno in missing_exceptions:
+                if css_class == "hit":
+                    css_class = "partial"
+                annotation += "<span class='annotate'>Missed exception handler</span>"
 
             if lineno in missing_loops:
                 if css_class == "hit":
