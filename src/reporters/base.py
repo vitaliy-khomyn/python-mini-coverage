@@ -12,6 +12,9 @@ class BaseReporter(ABC):
     Abstract base class for all coverage reporters.
     Enforces a consistent interface for the strategy pattern.
     """
+    def __init__(self, config: Any = None):
+        self.config = config
+
     def generate(self, results: AnalysisResults, project_root: str) -> None:
         """
         Generate the report based on analysis results.

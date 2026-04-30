@@ -54,6 +54,6 @@ class TestXmlReporter(BaseTestCase):
 
     def test_empty_results(self):
         empty = {}
-        XmlReporter("e.xml").generate(empty, self.test_dir)
+        XmlReporter(output_file="e.xml").generate(empty, self.test_dir)
         tree = ET.parse("e.xml")
         self.assertEqual(tree.getroot().attrib["lines-covered"], "0")

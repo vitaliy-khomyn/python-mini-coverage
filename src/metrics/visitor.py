@@ -1,4 +1,5 @@
 import ast
+from typing import Optional, List
 
 
 class NextStatementVisitor(ast.NodeVisitor):
@@ -7,11 +8,11 @@ class NextStatementVisitor(ast.NodeVisitor):
     the next logical statement that follows a given block.
     This is useful for finding the exit target of loops or if-statements.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         # Stack of nodes in the current traversal path
-        self.path = []
+        self.path: List[ast.AST] = []
 
-    def visit(self, node):
+    def visit(self, node: ast.AST) -> None:
         # Before visiting children, add node to path
         self.path.append(node)
         # Default visitor will call visit_FIELD on children
@@ -19,7 +20,7 @@ class NextStatementVisitor(ast.NodeVisitor):
         # After visiting children, remove node from path
         self.path.pop()
 
-    def _find_next_statement(self, node):
+    def _find_next_statement(self, node: ast.AST) -> Optional[ast.AST]:
         """
         Finds the statement that executes immediately after the given node.
         """

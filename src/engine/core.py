@@ -125,7 +125,7 @@ class MiniCoverage:
 
         self.analyzer = Analyzer(self.parser, self.metrics, self.config, self.path_manager, self.excluded_files)
 
-        self.report_manager = ReportManager(self.config.reporters)
+        self.report_manager = ReportManager(self.config)
 
         self._cache_traceable: Dict[str, bool] = {}
         self.thread_local = threading.local()
@@ -392,7 +392,10 @@ class MiniCoverage:
         results = self.analyze()
 
         if reporters:
-            manager = ReportManager(reporters)
+            import copy
+            cfg = copy.copy(self.config)
+            cfg.reporters = reporters
+            manager = ReportManager(cfg)
             manager.generate(results, self.project_root)
         else:
             self.report_manager.generate(results, self.project_root)

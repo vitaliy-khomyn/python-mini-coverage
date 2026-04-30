@@ -1,8 +1,10 @@
 import os
 import html
 import collections
+from typing import Any, Dict, List
 from .base import BaseReporter, AnalysisResults, FileResults
 from . import templates
+from .registry import get_active_metrics
 
 
 class HtmlReporter(BaseReporter):
@@ -10,7 +12,8 @@ class HtmlReporter(BaseReporter):
     Generates a static HTML website visualizing coverage.
     """
 
-    def __init__(self, output_dir: str = "htmlcov") -> None:
+    def __init__(self, config: Any = None, output_dir: str = "htmlcov") -> None:
+        super().__init__(config)
         self.output_dir = output_dir
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
@@ -24,43 +27,28 @@ class HtmlReporter(BaseReporter):
             self._generate_file_report(filename, data, project_root)
 
     def _generate_index(self, results: AnalysisResults, project_root: str) -> None:
-        METRICS_CONFIG = [
-            {'key': 'stmt', 'name': 'Statement', 'display': 'Statements'},
-            {'key': 'branch', 'name': 'Branch', 'display': 'Branches'},
-            {'key': 'cond', 'name': 'Condition', 'display': 'Conditions'},
-            {'key': 'func', 'name': 'Function', 'display': 'Functions'},
-            {'key': 'loop', 'name': 'Loop', 'display': 'Loops'},
-            {'key': 'class', 'name': 'Class', 'display': 'Classes'},
-            {'key': 'call', 'name': 'Call-Site', 'display': 'Call-Sites'},
-            {'key': 'exc', 'name': 'Exception', 'display': 'Exceptions'},
-        ]
-        totals = {m['key']: {'possible': 0, 'missing': 0} for m in METRICS_CONFIG}
+        active_metrics = get_active_metrics(self.config)
+        totals = {m.key: {'possible': 0, 'missing': 0} for m in active_metrics}
 
         rows = ""
         for filename in sorted(results.keys()):
             # Collect data for all metrics for the current file
             file_metrics_list = []
             has_statement_data = False
-            for cfg in METRICS_CONFIG:
-                metric_data = results[filename].get(cfg['name'], {})
+            for m in active_metrics:
+                metric_data = results[filename].get(m.name, {})
                 metric_data.setdefault('pct', 0)
                 metric_data.setdefault('ratio', "0/0")
                 file_metrics_list.append(metric_data)
 
-                if cfg['name'] == 'Statement' and metric_data.get('possible'):
+                if m.name == 'Statement' and metric_data.get('possible'):
                     has_statement_data = True
 
                 # Aggregate totals
-                key = cfg['key']
-                if cfg['name'] == 'Condition':
-                    missing_outcomes = metric_data.get('missing_outcomes', {})
-                    if missing_outcomes:
-                        for line_stats in missing_outcomes.values():
-                            totals[key]['possible'] += line_stats.get('total', 0)
-                            totals[key]['missing'] += len(line_stats.get('missing', []))
-                    else:
-                        totals[key]['possible'] += len(metric_data.get('possible', []))
-                        totals[key]['missing'] += len(metric_data.get('missing', []))
+                key = m.key
+                if 'total_possible' in metric_data:
+                    totals[key]['possible'] += metric_data['total_possible']
+                    totals[key]['missing'] += metric_data['total_missing']
                 else:
                     totals[key]['possible'] += len(metric_data.get('possible', []))
                     totals[key]['missing'] += len(metric_data.get('missing', []))
@@ -78,27 +66,74 @@ class HtmlReporter(BaseReporter):
             )
 
         # calculate total percentages
-        def calc_pct(poss, miss):
-            if poss == 0: return 100.0
+        def calc_pct(poss: int, miss: int) -> float:
+            if poss == 0:
+                return 100.0
             return ((poss - miss) / poss) * 100.0
 
-        def calc_ratio(poss, miss):
+        def calc_ratio(poss: int, miss: int) -> str:
             return f"{poss - miss}/{poss}"
 
         total_stats = []
-        for cfg in METRICS_CONFIG:
-            key = cfg['key']
+        for m in active_metrics:
+            key = m.key
             poss, miss = totals[key]['possible'], totals[key]['missing']
             total_stats.append({
-                'display': cfg['display'],
+                'display': m.html_display,
                 'pct': calc_pct(poss, miss),
                 'ratio': calc_ratio(poss, miss)
             })
 
-        html_content = templates.render_index([m['display'] for m in METRICS_CONFIG], total_stats, rows)
+        html_content = templates.render_index([m.html_display for m in active_metrics], total_stats, rows)
 
         with open(os.path.join(self.output_dir, "index.html"), "w", encoding="utf-8") as f:
             f.write(html_content)
+
+    def _get_html_annotations(self, metric_name: str, stats: Dict[str, Any]) -> Dict[int, List[str]]:
+        annotations: Dict[int, List[str]] = collections.defaultdict(list)
+        missing = stats.get('missing', set())
+        if not missing and metric_name != 'Condition':
+            return annotations
+
+        if metric_name == 'Branch':
+            missing_branches: Dict[int, List[int]] = collections.defaultdict(list)
+            for start, end in missing:
+                missing_branches[start].append(end)
+            for start, targets in missing_branches.items():
+                targets_str = ", ".join(map(str, targets))
+                annotations[start].append(f"Missed branch to: {targets_str}")
+        elif metric_name == 'Function':
+            for name, def_line, _ in missing:
+                annotations[def_line].append(f"Function '{html.escape(name)}' was not called")
+        elif metric_name == 'Loop':
+            for start, end in missing:
+                if "Missed loop path(s)" not in annotations[start]:
+                    annotations[start].append("Missed loop path(s)")
+        elif metric_name == 'Class':
+            for name, def_line, _ in missing:
+                annotations[def_line].append(f"Class '{html.escape(name)}' was not instantiated")
+        elif metric_name == 'Call-Site':
+            calls_by_line: Dict[int, List[str]] = collections.defaultdict(list)
+            for name, lineno in missing:
+                calls_by_line[lineno].append(name)
+            for lineno, names in calls_by_line.items():
+                annotations[lineno].append(f"Missed call to: {html.escape(', '.join(names))}")
+        elif metric_name == 'Exception':
+            for lineno in missing:
+                annotations[lineno].append("Missed exception handler")
+        elif metric_name == 'Condition':
+            missing_outcomes = stats.get('missing_outcomes', {})
+            for lineno, cond_info in missing_outcomes.items():
+                if isinstance(cond_info, dict) and 'ratio' in cond_info and cond_info.get('missing'):
+                    rows = ""
+                    for item in cond_info['missing']:
+                        vec = item.get('vector', str(item))
+                        rows += f"<tr><td>{html.escape(vec)}</td></tr>"
+                    table = f"<strong>Condition Coverage: {cond_info['ratio']}</strong>" \
+                            f"<table class='condition-table'><tbody>{rows}</tbody></table>"
+                    annotations[lineno].append(table)
+
+        return dict(annotations)
 
     def _generate_file_report(self, filename: str, data: FileResults, project_root: str) -> None:
         rel_name = os.path.relpath(filename, project_root)
@@ -108,46 +143,18 @@ class HtmlReporter(BaseReporter):
         if not stmt_data:
             return
 
-        class_data = data.get('Class')
-        missing_classes = {}
-        if class_data and class_data.get('missing'):
-            # Recreate the map from the raw missing elements tuple: (name, def_line, init_first_line)
-            missing_classes = {cls[1]: f"Class '{cls[0]}' was not instantiated" for cls in class_data['missing']}
+        executed_lines = stmt_data.get('executed', set())
+        missing_lines = stmt_data.get('missing', set())
 
-        call_data = data.get('Call-Site')
-        missing_calls = collections.defaultdict(list)
-        if call_data and call_data.get('missing'):
-            for name, lineno in call_data['missing']:
-                missing_calls[lineno].append(name)
-
-        exc_data = data.get('Exception')
-        missing_exceptions = set()
-        if exc_data and exc_data.get('missing'):
-            missing_exceptions = exc_data['missing']
-
-        executed_lines = stmt_data['executed']
-        missing_lines = stmt_data['missing']
-
-        branch_data = data.get('Branch')
-        missing_branches = collections.defaultdict(list)
-        if branch_data:
-            for start, end in branch_data['missing']:
-                missing_branches[start].append(end)
-
-        cond_data = data.get('Condition')
-        missing_conditions = cond_data.get('missing_outcomes', {}) if cond_data else {}
-
-        func_data = data.get('Function')
-        missing_functions = {}
-        if func_data and func_data.get('missing'):
-            # Recreate the map from the raw missing elements tuple: (name, def_line, first_exec_line)
-            missing_functions = {func[1]: f"Function '{func[0]}' was not called" for func in func_data['missing']}
-
-        loop_data = data.get('Loop')
-        missing_loops = collections.defaultdict(list)
-        if loop_data and loop_data.get('missing'):
-            for start, end in loop_data['missing']:
-                missing_loops[start].append(end)
+        # Aggregate all HTML annotations uniformly
+        line_annotations: Dict[int, List[str]] = collections.defaultdict(list)
+        active_metrics = get_active_metrics(self.config)
+        for m in active_metrics:
+            stats = data.get(m.name)
+            if stats:
+                anns = self._get_html_annotations(m.name, stats)
+                for lineno, ann_list in anns.items():
+                    line_annotations[lineno].extend(ann_list)
 
         try:
             with open(filename, 'r', encoding='utf-8') as f:
@@ -159,69 +166,24 @@ class HtmlReporter(BaseReporter):
         for i, line in enumerate(source_lines):
             lineno = i + 1
             css_class = ""
-            annotation = ""
-            details = None
+            details_html = None
+            toggle_text = None
 
             if lineno in executed_lines:
                 css_class = "hit"
             elif lineno in missing_lines:
                 css_class = "miss"
 
-            if lineno in missing_classes:
-                css_class = "miss"
-                annotation += f"<span class='annotate'>{html.escape(missing_classes[lineno])}</span>"
-
-            if lineno in missing_functions:
-                css_class = "miss"
-                annotation += f"<span class='annotate'>{html.escape(missing_functions[lineno])}</span>"
-
-            if lineno in missing_calls:
+            if lineno in line_annotations:
                 if css_class == "hit":
                     css_class = "partial"
-                names = ", ".join(missing_calls[lineno])
-                annotation += f"<span class='annotate'>Missed call to: {html.escape(names)}</span>"
-
-            if lineno in missing_exceptions:
-                if css_class == "hit":
-                    css_class = "partial"
-                annotation += "<span class='annotate'>Missed exception handler</span>"
-
-            if lineno in missing_loops:
-                if css_class == "hit":
-                    css_class = "partial"
-                annotation += "<span class='annotate'>Missed loop path(s)</span>"
-
-            if lineno in missing_branches:
-                targets = missing_branches[lineno]
-                if css_class == "hit":
-                    css_class = "partial"
-
-                targets_str = ", ".join(map(str, targets))
-                annotation = f"<span class='annotate'>Missed branch to: {targets_str}</span>"
-
-            if lineno in missing_conditions:
-                cond_info = missing_conditions[lineno]
-                if isinstance(cond_info, dict) and 'ratio' in cond_info:
-                    if cond_info['missing']:
-                        annotation += f"<span class='annotate condition'>Coverage: {cond_info['ratio']}</span>"
-                        if css_class == "hit":
-                            css_class = "cond-partial"
-                        rows = ""
-                        for item in cond_info['missing']:
-                            # item is dict {'vector': str, 'terminal': bool}
-                            vec = item.get('vector', str(item))
-                            rows += f"<tr><td>{html.escape(vec)}</td></tr>"
-                        details = f"<strong>Missing Cases:</strong><table class='condition-table'><thead><tr><th>Conditions</th></tr></thead><tbody>{rows}</tbody></table>"
-                else:
-                    # Fallback for legacy format
-                    if css_class == "hit":
-                        css_class = "cond-partial"
-                    conds = cond_info
-                    cond_str = ", ".join(sorted(set(conds)))
-                    annotation += f"<span class='annotate condition'>Condition Missing: {cond_str}</span>"
+                anns = line_annotations[lineno]
+                toggle_text = f"{len(anns)} Missing Details"
+                list_items = "".join([f"<div style='margin-bottom: 5px;'>{a}</div>" for a in anns])
+                details_html = f"<div class='annotation-list'>{list_items}</div>"
 
             line_content = html.escape(line.rstrip())
-            code_html += templates.render_code_line(lineno, line_content, css_class, annotation, details)
+            code_html += templates.render_code_line(lineno, line_content, css_class, toggle_text, details_html)
 
         html_content = templates.render_file(html.escape(rel_name), code_html)
 

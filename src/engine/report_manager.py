@@ -1,4 +1,3 @@
-from typing import List
 from ..reporters.base import AnalysisResults
 from ..reporters.console import ConsoleReporter
 from ..reporters.html import HtmlReporter
@@ -7,17 +6,18 @@ from ..reporters.json import JsonReporter
 
 
 class ReportManager:
-    def __init__(self, reporters: List[str]):
+    def __init__(self, config):
+        self.config = config
         self.reporters = []
-        for r in reporters:
+        for r in config.reporters:
             if r == 'console':
-                self.reporters.append(ConsoleReporter())
+                self.reporters.append(ConsoleReporter(config))
             elif r == 'html':
-                self.reporters.append(HtmlReporter(output_dir="htmlcov"))
+                self.reporters.append(HtmlReporter(config=config, output_dir="htmlcov"))
             elif r == 'xml':
-                self.reporters.append(XmlReporter(output_file="coverage.xml"))
+                self.reporters.append(XmlReporter(config=config, output_file="coverage.xml"))
             elif r == 'json':
-                self.reporters.append(JsonReporter(output_file="coverage.json"))
+                self.reporters.append(JsonReporter(config=config, output_file="coverage.json"))
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
         for reporter in self.reporters:

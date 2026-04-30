@@ -1,6 +1,6 @@
 import os
 from collections import defaultdict
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, List
 from .config import CoverageConfig
 
 
@@ -10,7 +10,7 @@ class Analyzer:
     to calculate coverage metrics.
     """
 
-    def __init__(self, parser, metrics, config: CoverageConfig, path_manager, excluded_files: Set[str]):
+    def __init__(self, parser: Any, metrics: List[Any], config: CoverageConfig, path_manager: Any, excluded_files: Set[str]) -> None:
         self.parser = parser
         self.metrics = metrics
         self.config = config

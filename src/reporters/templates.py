@@ -1,9 +1,10 @@
 """
 HTML templates and rendering helpers for the HTML reporter.
 """
+from typing import List, Dict, Any, Optional
 
 
-def render_index(headers, total_stats, rows):
+def render_index(headers: List[str], total_stats: List[Dict[str, Any]], rows: str) -> str:
     summary_items = []
     for stats in total_stats:
         summary_items.append(
@@ -56,7 +57,7 @@ def render_index(headers, total_stats, rows):
 """
 
 
-def render_index_row(link, filename, metric_data_list):
+def render_index_row(link: str, filename: str, metric_data_list: List[Dict[str, Any]]) -> str:
     cells_html = "".join([_render_cell(data) for data in metric_data_list])
     return f"""
     <tr>
@@ -66,7 +67,7 @@ def render_index_row(link, filename, metric_data_list):
     """
 
 
-def _render_cell(metric_data):
+def _render_cell(metric_data: Dict[str, Any]) -> str:
     if not metric_data or not metric_data.get('possible'):
         return '<td class="numeric na">N/A</td>'
 
@@ -76,13 +77,15 @@ def _render_cell(metric_data):
     return f'<td class="numeric {css}">{pct:.0f}% <span style="font-size:0.8em; color:#555">({ratio})</span></td>'
 
 
-def _get_css_class(pct):
-    if pct >= 90: return "good"
-    if pct >= 70: return "warn"
+def _get_css_class(pct: float) -> str:
+    if pct >= 90:
+        return "good"
+    if pct >= 70:
+        return "warn"
     return "bad"
 
 
-def render_file(filename, code_html):
+def render_file(filename: str, code_html: str) -> str:
     return f"""
 <!DOCTYPE html>
 <html>
@@ -96,11 +99,9 @@ def render_file(filename, code_html):
         .hit {{ background-color: #d4edda; }}
         .miss {{ background-color: #f8d7da; }}
         .partial {{ background-color: #fff3cd; }}
-        .cond-partial {{ background-color: #add8e6; }}
-        .annotate {{ color: #856404; font-weight: bold; float: right; margin-left: 20px; }}
-        .condition {{ color: #721c24; background-color: #f8d7da; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; cursor: pointer; }}
-        .condition:hover {{ text-decoration: underline; }}
-        .condition-details {{
+        .annotation-toggle {{ color: #721c24; background-color: #f8d7da; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; cursor: pointer; float: right; margin-left: 20px; font-weight: bold; }}
+        .annotation-toggle:hover {{ text-decoration: underline; }}
+        .annotation-details {{
             display: none;
             margin-top: 5px;
             margin-bottom: 5px;
@@ -116,12 +117,12 @@ def render_file(filename, code_html):
         .condition-table {{ width: auto; border-collapse: collapse; font-size: 0.9em; margin-top: 5px; border: 1px solid #721c24; }}
         .condition-table th, .condition-table td {{ border: 1px solid #721c24; padding: 4px; text-align: left; }}
         .condition-table th {{ background-color: #f5c6cb; }}
-        .condition-marker {{ text-align: center; font-weight: bold; width: 50px; }}
-        .line.open .condition-details {{ display: block; }}
+        .line.open .annotation-details {{ display: block; }}
+        .annotation-list {{ margin: 0; padding-left: 20px; }}
     </style>
     <script>
         function toggleDetails(el, event) {{
-            if (event && event.target.closest('.condition-details')) return;
+            if (event && event.target.closest('.annotation-details')) return;
             var line = el.closest('.line');
             line.classList.toggle('open');
         }}
@@ -134,23 +135,23 @@ def render_file(filename, code_html):
 """
 
 
-def render_code_line(lineno, content, css_class, annotation, details=None):
+def render_code_line(lineno: int, content: str, css_class: str, toggle_text: Optional[str] = None, details_html: Optional[str] = None) -> str:
     # content is already escaped
     extra_attrs = ""
-    if details:
+    if details_html:
         css_class += " has-details"
         extra_attrs = ' onclick="toggleDetails(this, event)"'
 
     line_div = f'<div class="line {css_class}"{extra_attrs}>'
     line_div += f'<span class="lineno">{lineno}</span>'
 
-    if annotation:
-        line_div += annotation
+    if toggle_text:
+        line_div += f"<span class='annotation-toggle'>{toggle_text}</span>"
 
     line_div += content
 
-    if details:
-        line_div += f'<div class="condition-details">{details}</div>'
+    if details_html:
+        line_div += f'<div class="annotation-details">{details_html}</div>'
 
     line_div += '</div>'
     return line_div

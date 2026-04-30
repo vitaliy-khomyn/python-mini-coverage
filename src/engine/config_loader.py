@@ -116,6 +116,10 @@ class ConfigLoader:
             val = parser.get(report_section, 'exclude_lines')
             config.exclude_lines.update(self._parse_list(val))
 
+        if report_section and parser.has_option(report_section, 'metrics'):
+            val = parser.get(report_section, 'metrics')
+            config.report_metrics = list(self._parse_list(val))
+
         # parse paths section
         if paths_section:
             for option in parser.options(paths_section):
@@ -155,6 +159,8 @@ class ConfigLoader:
         # report section
         if 'exclude_lines' in report:
             config.exclude_lines.update(report['exclude_lines'])
+        if 'metrics' in report:
+            config.report_metrics = list(report['metrics'])
 
         # paths section
         if paths:

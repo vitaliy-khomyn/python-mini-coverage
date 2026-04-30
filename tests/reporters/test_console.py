@@ -47,7 +47,8 @@ class TestConsoleReporter(BaseTestCase):
         with self.capture_stdout() as output:
             reporter.generate(res, self.project_root)
             text = output.getvalue()
-        self.assertIn("N/A", text)
+        self.assertNotIn("N/A", text)
+        self.assertIn("-", text)
 
     def test_empty_results(self):
         empty = {}

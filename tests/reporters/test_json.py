@@ -50,6 +50,6 @@ class TestJsonReporter(BaseTestCase):
 
     def test_empty_results(self):
         empty = {}
-        JsonReporter("e.json").generate(empty, self.test_dir)
+        JsonReporter(output_file="e.json").generate(empty, self.test_dir)
         with open("e.json") as f:
             self.assertEqual(json.load(f)["files"], {})

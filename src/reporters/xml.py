@@ -2,7 +2,9 @@ import os
 import time
 import collections
 import xml.etree.ElementTree as ET
+from typing import Any
 from .base import BaseReporter, AnalysisResults
+from .registry import get_active_metrics
 
 
 class XmlReporter(BaseReporter):
@@ -11,65 +13,54 @@ class XmlReporter(BaseReporter):
     Useful for integration with CI/CD tools like Jenkins or Codecov.
     """
 
-    def __init__(self, output_file: str = "coverage.xml") -> None:
+    def __init__(self, config: Any = None, output_file: str = "coverage.xml") -> None:
+        super().__init__(config)
         self.output_file = output_file
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
         print(f"Generating XML report to {self.output_file}...")
 
-        METRICS_CONFIG = [
-            {'key': 'lines', 'name': 'Statement'},
-            {'key': 'branches', 'name': 'Branch'},
-            {'key': 'functions', 'name': 'Function'},
-            {'key': 'loops', 'name': 'Loop'},  # Non-standard
-            {'key': 'classes', 'name': 'Class'}, # Non-standard
-            {'key': 'calls', 'name': 'Call-Site'}, # Non-standard
-            {'key': 'exceptions', 'name': 'Exception'}, # Non-standard
-        ]
-        totals = {f"{cfg['key']}_valid": 0 for cfg in METRICS_CONFIG}
-        totals.update({f"{cfg['key']}_covered": 0 for cfg in METRICS_CONFIG})
+        active_metrics = get_active_metrics(self.config)
+        totals = {f"{m.xml_key}_valid": 0 for m in active_metrics}
+        totals.update({f"{m.xml_key}_covered": 0 for m in active_metrics})
 
         for file_res in results.values():
-            for cfg in METRICS_CONFIG:
-                metric_data = file_res.get(cfg['name'])
+            for m in active_metrics:
+                metric_data = file_res.get(m.name)
                 if metric_data:
-                    totals[f"{cfg['key']}_valid"] += len(metric_data.get('possible', []))
-                    totals[f"{cfg['key']}_covered"] += len(metric_data.get('executed', []))
+                    if 'total_possible' in metric_data:
+                        totals[f"{m.xml_key}_valid"] += metric_data['total_possible']
+                        totals[f"{m.xml_key}_covered"] += (metric_data['total_possible'] - metric_data['total_missing'])
+                    else:
+                        totals[f"{m.xml_key}_valid"] += len(metric_data.get('possible', []))
+                        totals[f"{m.xml_key}_covered"] += len(metric_data.get('executed', []))
 
-        def calc_rate(key):
+        def calc_rate(key: str) -> float:
             valid = totals.get(f"{key}_valid", 0)
             covered = totals.get(f"{key}_covered", 0)
             return (covered / valid) if valid > 0 else 1.0
 
-        line_rate = calc_rate('lines')
-        branch_rate = calc_rate('branches')
-        func_rate = calc_rate('functions')
-        loop_rate = calc_rate('loops')
-        class_rate = calc_rate('classes')
-        call_rate = calc_rate('calls')
-        exc_rate = calc_rate('exceptions')
+        line_rate: float = calc_rate('lines')
+        branch_rate: float = calc_rate('branches')
 
         root = ET.Element("coverage")
-        root.set("line-rate", str(line_rate))
-        root.set("branch-rate", str(branch_rate))
-        # Non-standard, but useful for summary
-        root.set("function-rate", str(func_rate))
-        root.set("loop-rate", str(loop_rate))
-        root.set("class-rate", str(class_rate))
-        root.set("call-rate", str(call_rate))
-        root.set("exception-rate", str(exc_rate))
-        root.set("lines-covered", str(totals['lines_covered']))
-        root.set("lines-valid", str(totals['lines_valid']))
-        root.set("branches-covered", str(totals['branches_covered']))
-        root.set("branches-valid", str(totals['branches_valid']))
-        root.set("functions-covered", str(totals['functions_covered']))
-        root.set("functions-valid", str(totals.get('functions_valid', 0)))
-        root.set("classes-covered", str(totals.get('classes_covered', 0)))
-        root.set("classes-valid", str(totals.get('classes_valid', 0)))
-        root.set("calls-covered", str(totals.get('calls_covered', 0)))
-        root.set("calls-valid", str(totals.get('calls_valid', 0)))
-        root.set("exceptions-covered", str(totals.get('exceptions_covered', 0)))
-        root.set("exceptions-valid", str(totals.get('exceptions_valid', 0)))
+        for m in active_metrics:
+            rate = calc_rate(m.xml_key)
+            tag_name = m.xml_key[:-1] if m.xml_key.endswith('s') else m.xml_key
+            root.set(f"{tag_name}-rate", str(rate))
+
+            root.set(f"{m.xml_key}-covered", str(totals[f"{m.xml_key}_covered"]))
+            root.set(f"{m.xml_key}-valid", str(totals[f"{m.xml_key}_valid"]))
+
+        if 'lines_covered' not in totals:
+            root.set("lines-covered", "0")
+            root.set("lines-valid", "0")
+            root.set("line-rate", "1.0")
+        if 'branches_covered' not in totals:
+            root.set("branches-covered", "0")
+            root.set("branches-valid", "0")
+            root.set("branch-rate", "1.0")
+
         root.set("complexity", "0")
         root.set("version", "1.0")
         root.set("timestamp", str(int(time.time())))
@@ -90,7 +81,23 @@ class XmlReporter(BaseReporter):
         for filename in sorted(results.keys()):
             rel_name = os.path.relpath(filename, project_root)
             file_data = results[filename]
-            stmt = file_data.get('Statement')
+
+            stmt = None
+            branch = None
+            func_data = None
+            cond = None
+
+            # Extract specific required data dynamically based on the configured metrics
+            for m in active_metrics:
+                if m.xml_key == 'lines':
+                    stmt = file_data.get(m.name)
+                elif m.xml_key == 'branches':
+                    branch = file_data.get(m.name)
+                elif m.xml_key == 'functions':
+                    func_data = file_data.get(m.name)
+                elif m.xml_key == 'conditions':
+                    cond = file_data.get(m.name)
+
             if not stmt:
                 continue
 
@@ -101,13 +108,11 @@ class XmlReporter(BaseReporter):
             cls.set("filename", rel_name)
             cls.set("line-rate", str(file_line_rate))
 
-            branch = file_data.get('Branch')
             file_branch_rate = (branch['pct'] / 100.0) if branch else 0.0
             cls.set("branch-rate", str(file_branch_rate))
             cls.set("complexity", "0")
 
             methods_elem = ET.SubElement(cls, "methods")
-            func_data = file_data.get('Function')
             if func_data:
                 all_funcs = func_data.get('possible', set())
                 hit_funcs = func_data.get('executed', set())
@@ -139,7 +144,6 @@ class XmlReporter(BaseReporter):
                     branch_map[start].append(end)
                 executed_branches = set(branch['executed'])
 
-            cond = file_data.get('Condition')
             cond_outcomes = cond.get('missing_outcomes', {}) if cond else {}
 
             for lineno in sorted(all_lines):

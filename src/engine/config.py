@@ -25,3 +25,4 @@ class CoverageConfig:
     data_file: str = '.coverage.db'
     paths: Dict[str, List[str]] = field(default_factory=dict)
     reporters: List[str] = field(default_factory=lambda: ['console', 'html'])
+    report_metrics: List[str] = field(default_factory=list)

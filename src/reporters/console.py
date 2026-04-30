@@ -1,6 +1,7 @@
 import os
-from typing import Optional
+from typing import Any, List
 from .base import BaseReporter, AnalysisResults, CoverageStats
+from .registry import get_active_metrics
 
 
 class ConsoleReporter(BaseReporter):
@@ -9,119 +10,79 @@ class ConsoleReporter(BaseReporter):
     """
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
-        print("\n" + "=" * 151)
-        headers = f"{'File':<40} | {'Stmt':>6} | {'Branch':>6} | {'Cond':>6} | {'Func':>6} | {'Loop':>6} | {'Class':>6} | {'Call':>6} | {'Exc':>6} | {'Missing'}"
+        active_metrics = get_active_metrics(self.config)
+
+        headers_list = [f"{'File':<40}"]
+        for m in active_metrics:
+            headers_list.append(f"{m.console_header:>6}")
+        headers_list.append("Missing")
+
+        headers = " | ".join(headers_list)
+
+        print("\n" + "=" * len(headers))
         print(headers)
-        print("-" * 151)
+        print("-" * len(headers))
 
         for filename in sorted(results.keys()):
             file_data = results[filename]
-            stmt_data = file_data.get('Statement')
-            branch_data = file_data.get('Branch')
-            cond_data = file_data.get('Condition')
-            func_data = file_data.get('Function')
-            loop_data = file_data.get('Loop')
-            class_data = file_data.get('Class')
-            call_data = file_data.get('Call-Site')
-            exc_data = file_data.get('Exception')
+            if 'Statement' in file_data:
+                self._print_row(filename, file_data, active_metrics, project_root)
+        print("=" * len(headers))
 
-            if stmt_data:
-                self._print_row(filename, stmt_data, branch_data, cond_data, func_data, loop_data, class_data, call_data, exc_data, project_root)
-        print("=" * 151)
+    def _format_console_missing(self, metric_name: str, stats: CoverageStats) -> str:
+        missing = stats.get('missing', set())
+        if not missing:
+            return ""
 
-    def _print_row(self, filename: str, stmt_data: CoverageStats, branch_data: Optional[CoverageStats],
-                   cond_data: Optional[CoverageStats], func_data: Optional[CoverageStats],
-                   loop_data: Optional[CoverageStats], class_data: Optional[CoverageStats],
-                   call_data: Optional[CoverageStats], exc_data: Optional[CoverageStats],
-                   project_root: str) -> None:
+        if metric_name == 'Statement':
+            missing_list = sorted(list(missing))
+            if len(missing_list) > 5:
+                return f"L{missing_list[0]}..L{missing_list[-1]}"
+            return f"Lines: {','.join(map(str, missing_list))}"
+        elif metric_name == 'Branch':
+            arcs_str = [f"{start}->{end}" for start, end in sorted(list(missing))]
+            if len(arcs_str) > 3:
+                return f"Branches: {len(arcs_str)} missed"
+            return f"Br: {', '.join(arcs_str)}"
+        elif metric_name == 'Condition':
+            return ""
+        elif metric_name == 'Function':
+            return f"{len(missing)} funcs"
+        elif metric_name == 'Loop':
+            return f"{len(missing)} loop paths"
+        elif metric_name == 'Class':
+            return f"{len(missing)} classes"
+        elif metric_name == 'Call-Site':
+            return f"{len(missing)} calls"
+        elif metric_name == 'Exception':
+            return f"{len(missing)} exceptions"
+
+        count = len(missing) if isinstance(missing, set) else len(list(missing))
+        if count > 0:
+            return f"{count} {metric_name.lower()}s"
+        return ""
+
+    def _print_row(self, filename: str, file_data: dict, active_metrics: List[Any], project_root: str) -> None:
         rel_name = os.path.relpath(filename, project_root)
-
-        stmt_pct = stmt_data['pct']
-        stmt_miss = sorted(list(stmt_data['missing']))
-
-        branch_pct = 0
-        branch_miss = []
-        has_branches = False
-
-        if branch_data:
-            possible = branch_data['possible']
-            if possible:
-                has_branches = True
-                branch_pct = branch_data['pct']
-                branch_miss = sorted(list(branch_data['missing']))
-
-        cond_str = "-"
-        if cond_data:
-            if cond_data.get('possible'):
-                cond_str = f"{int(cond_data['pct'])}%"
-
-        func_str = "-"
-        if func_data and func_data.get('possible'):
-            func_str = f"{int(func_data['pct'])}%"
-
-        loop_str = "-"
-        if loop_data and loop_data.get('possible'):
-            loop_str = f"{int(loop_data['pct'])}%"
-
-        class_str = "-"
-        if class_data and class_data.get('possible'):
-            class_str = f"{int(class_data['pct'])}%"
-
-        call_str = "-"
-        if call_data and call_data.get('possible'):
-            call_str = f"{int(call_data['pct'])}%"
-
-        exc_str = "-"
-        if exc_data and exc_data.get('possible'):
-            exc_str = f"{int(exc_data['pct'])}%"
-
+        row_str = f"{rel_name:<40}"
         missing_items = []
 
-        if stmt_miss:
-            if len(stmt_miss) > 5:
-                missing_items.append(f"L{stmt_miss[0]}..L{stmt_miss[-1]}")
+        for m in active_metrics:
+            metric_data = file_data.get(m.name)
+            if metric_data:
+                if metric_data.get('possible'):
+                    val_str = f"{metric_data['pct']:>5.0f}%"
+                else:
+                    val_str = "   N/A" if m.name == 'Statement' else "     -"
             else:
-                missing_items.append(f"Lines: {','.join(map(str, stmt_miss))}")
+                val_str = "     -"
 
-        if branch_miss:
-            arcs_str = [f"{start}->{end}" for start, end in branch_miss]
-            if len(arcs_str) > 3:
-                missing_items.append(f"Branches: {len(arcs_str)} missed")
-            else:
-                missing_items.append(f"Br: {', '.join(arcs_str)}")
-
-        if func_data and func_data.get('missing'):
-            missing_func_count = len(func_data['missing'])
-            if missing_func_count > 0:
-                missing_items.append(f"{missing_func_count} funcs")
-
-        if loop_data and loop_data.get('missing'):
-            missing_loop_count = len(loop_data['missing'])
-            if missing_loop_count > 0:
-                missing_items.append(f"{missing_loop_count} loop paths")
-
-        if class_data and class_data.get('missing'):
-            missing_class_count = len(class_data['missing'])
-            if missing_class_count > 0:
-                missing_items.append(f"{missing_class_count} classes")
-
-        if call_data and call_data.get('missing'):
-            missing_call_count = len(call_data['missing'])
-            if missing_call_count > 0:
-                missing_items.append(f"{missing_call_count} calls")
-
-        if exc_data and exc_data.get('missing'):
-            missing_exc_count = len(exc_data['missing'])
-            if missing_exc_count > 0:
-                missing_items.append(f"{missing_exc_count} exceptions")
+            row_str += f" | {val_str:>6}"
+            if metric_data:
+                miss_str_metric = self._format_console_missing(m.name, metric_data)
+                if miss_str_metric:
+                    missing_items.append(miss_str_metric)
 
         miss_str = "; ".join(missing_items)
-        if not miss_str:
-            miss_str = ""
-
-        if not has_branches:
-            branch_str = "N/A"
-        else:
-            branch_str = f"{branch_pct:>3.0f}%"
-
-        print(f"{rel_name:<40} | {stmt_pct:>5.0f}% | {branch_str:>6} | {cond_str:>6} | {func_str:>6} | {loop_str:>6} | {class_str:>6} | {call_str:>6} | {exc_str:>6} | {miss_str}")
+        row_str += f" | {miss_str}"
+        print(row_str)
