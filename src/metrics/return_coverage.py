@@ -1,6 +1,7 @@
 import ast
 from typing import Set, Optional
 
+from .visitor import BaseVisitor
 from .base import CoverageMetric
 
 
@@ -23,12 +24,12 @@ class ReturnCoverage(CoverageMetric):
         return visitor.return_lines
 
 
-class ReturnVisitor(ast.NodeVisitor):
+class ReturnVisitor(BaseVisitor):
     def __init__(self, ignored_lines: Set[int]):
-        self.ignored_lines = ignored_lines
+        super().__init__(ignored_lines)
         self.return_lines: Set[int] = set()
 
     def visit_Return(self, node: ast.Return) -> None:
-        if hasattr(node, 'lineno') and node.lineno not in self.ignored_lines:
+        if not self.is_ignored(node):
             self.return_lines.add(node.lineno)
         self.generic_visit(node)

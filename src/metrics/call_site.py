@@ -1,6 +1,7 @@
 import ast
 from typing import Set, Tuple, Optional, Dict, Any
 
+from .visitor import BaseVisitor
 from .base import CoverageMetric
 
 # Tuple stores: (callable_name, line_no)
@@ -60,13 +61,13 @@ class CallSiteCoverage(CoverageMetric):
         }
 
 
-class CallSiteVisitor(ast.NodeVisitor):
+class CallSiteVisitor(BaseVisitor):
     def __init__(self, ignored_lines: Set[int]):
-        self.ignored_lines = ignored_lines
+        super().__init__(ignored_lines)
         self.call_sites: Set[CallSiteElement] = set()
 
     def visit_Call(self, node: ast.Call) -> None:
-        if hasattr(node, 'lineno') and node.lineno not in self.ignored_lines:
+        if not self.is_ignored(node):
             name = self._get_name(node.func)
             self.call_sites.add((name, node.lineno))
         self.generic_visit(node)

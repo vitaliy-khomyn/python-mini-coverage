@@ -1,6 +1,7 @@
 import ast
 from typing import Set, Tuple, Optional, Dict, Any
 
+from .visitor import BaseVisitor
 from .base import CoverageMetric
 
 # Using a tuple to store info about each function
@@ -75,25 +76,10 @@ class FunctionCoverage(CoverageMetric):
         }
 
 
-class FunctionVisitor(ast.NodeVisitor):
+class FunctionVisitor(BaseVisitor):
     def __init__(self, ignored_lines: Set[int]):
-        self.ignored_lines = ignored_lines
+        super().__init__(ignored_lines)
         self.functions: Set[FunctionElement] = set()
-
-    def _is_docstring(self, stmt: ast.stmt) -> bool:
-        """
-        Checks if an AST statement is a docstring.
-        This is compatible with Python versions before and after 3.8.
-        """
-        if not isinstance(stmt, ast.Expr):
-            return False
-
-        # Python 3.8+ uses ast.Constant for strings
-        if isinstance(stmt.value, ast.Constant):
-            return isinstance(stmt.value.value, str)
-
-        # Python < 3.8 used ast.Str
-        return hasattr(ast, 'Str') and isinstance(stmt.value, ast.Str)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._analyze_function(node)
@@ -104,7 +90,7 @@ class FunctionVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _analyze_function(self, node: ast.AST) -> None:
-        if node.lineno in self.ignored_lines:
+        if self.is_ignored(node):
             return
 
         first_exec_line = next((stmt.lineno for stmt in node.body if not self._is_docstring(stmt)), None)

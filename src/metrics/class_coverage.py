@@ -1,6 +1,7 @@
 import ast
 from typing import Set, Tuple, Optional, Dict, Any
 
+from .visitor import BaseVisitor
 from .base import CoverageMetric
 
 # (class_name, definition_line_no, init_first_executable_line_no)
@@ -62,18 +63,13 @@ class ClassCoverage(CoverageMetric):
         }
 
 
-class ClassVisitor(ast.NodeVisitor):
+class ClassVisitor(BaseVisitor):
     def __init__(self, ignored_lines: Set[int]):
-        self.ignored_lines = ignored_lines
+        super().__init__(ignored_lines)
         self.classes: Set[ClassElement] = set()
 
-    def _is_docstring(self, stmt: ast.stmt) -> bool:
-        if not isinstance(stmt, ast.Expr): return False
-        if isinstance(stmt.value, ast.Constant): return isinstance(stmt.value.value, str)
-        return hasattr(ast, 'Str') and isinstance(stmt.value, ast.Str)
-
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        if node.lineno in self.ignored_lines:
+        if self.is_ignored(node):
             self.generic_visit(node)
             return
 

@@ -1,6 +1,7 @@
 import ast
 from typing import Set, Optional
 
+from .visitor import BaseVisitor
 from .base import CoverageMetric
 
 
@@ -23,12 +24,12 @@ class ExceptionCoverage(CoverageMetric):
         return visitor.except_lines
 
 
-class ExceptionVisitor(ast.NodeVisitor):
+class ExceptionVisitor(BaseVisitor):
     def __init__(self, ignored_lines: Set[int]):
-        self.ignored_lines = ignored_lines
+        super().__init__(ignored_lines)
         self.except_lines: Set[int] = set()
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
-        if hasattr(node, 'lineno') and node.lineno not in self.ignored_lines:
+        if not self.is_ignored(node):
             self.except_lines.add(node.lineno)
         self.generic_visit(node)

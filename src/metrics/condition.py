@@ -211,7 +211,8 @@ class ConditionCoverage(CoverageMetric):
                 prefix_a = vec_a
 
             for j, item_b in enumerate(raw_items):
-                if i == j: continue
+                if i == j:
+                    continue
                 vec_b = item_b['vector']
                 if len(vec_b) >= len(prefix_a) and vec_b[:len(prefix_a)] == prefix_a:
                     indices_to_remove.add(i)

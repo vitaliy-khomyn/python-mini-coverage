@@ -32,12 +32,11 @@ class LoopCoverage(CoverageMetric):
 
 class LoopVisitor(NextStatementVisitor):
     def __init__(self, ignored_lines: Set[int]):
-        super().__init__()
-        self.ignored_lines = ignored_lines
+        super().__init__(ignored_lines)
         self.arcs: Set[Tuple[int, int]] = set()
 
     def visit_For(self, node: ast.For) -> None:
-        if node.lineno not in self.ignored_lines:
+        if not self.is_ignored(node):
             if node.body:
                 self.arcs.add((node.lineno, node.body[0].lineno))
             exit_node = node.orelse[0] if node.orelse else self._find_next_statement(node)
@@ -46,7 +45,7 @@ class LoopVisitor(NextStatementVisitor):
         self.generic_visit(node)
 
     def visit_While(self, node: ast.While) -> None:
-        if node.lineno not in self.ignored_lines:
+        if not self.is_ignored(node):
             if node.body:
                 self.arcs.add((node.lineno, node.body[0].lineno))
             exit_node = node.orelse[0] if node.orelse else self._find_next_statement(node)

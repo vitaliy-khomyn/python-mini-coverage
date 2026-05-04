@@ -28,12 +28,9 @@ class XmlReporter(BaseReporter):
             for m in active_metrics:
                 metric_data = file_res.get(m.name)
                 if metric_data:
-                    if 'total_possible' in metric_data:
-                        totals[f"{m.xml_key}_valid"] += metric_data['total_possible']
-                        totals[f"{m.xml_key}_covered"] += (metric_data['total_possible'] - metric_data['total_missing'])
-                    else:
-                        totals[f"{m.xml_key}_valid"] += len(metric_data.get('possible', []))
-                        totals[f"{m.xml_key}_covered"] += len(metric_data.get('executed', []))
+                    poss, exc = m.formatter.get_totals(metric_data)
+                    totals[f"{m.xml_key}_valid"] += poss
+                    totals[f"{m.xml_key}_covered"] += exc
 
         def calc_rate(key: str) -> float:
             valid = totals.get(f"{key}_valid", 0)

@@ -1,7 +1,7 @@
 import os
 import logging
 import configparser
-from typing import Optional, Set
+from typing import Optional, Set, Dict, Any
 from .config import CoverageConfig
 
 # try importing tomllib for pyproject.toml support (Python 3.11+)
@@ -95,38 +95,32 @@ class ConfigLoader:
         if not run_section and not report_section and not paths_section:
             return False
 
-        # parse run section
+        run_data = {}
         if run_section:
             for key in ['omit', 'include', 'source']:
                 if parser.has_option(run_section, key):
-                    val = parser.get(run_section, key)
-                    getattr(config, key).update(self._parse_list(val))
+                    run_data[key] = self._parse_list(parser.get(run_section, key))
 
             if parser.has_option(run_section, 'branch'):
-                config.branch = parser.getboolean(run_section, 'branch')
+                run_data['branch'] = parser.getboolean(run_section, 'branch')
 
-            if parser.has_option(run_section, 'concurrency'):
-                config.concurrency = parser.get(run_section, 'concurrency').strip()
+            for key in ['concurrency', 'data_file']:
+                if parser.has_option(run_section, key):
+                    run_data[key] = parser.get(run_section, key).strip()
 
-            if parser.has_option(run_section, 'data_file'):
-                config.data_file = parser.get(run_section, 'data_file').strip()
+        report_data = {}
+        if report_section:
+            if parser.has_option(report_section, 'exclude_lines'):
+                report_data['exclude_lines'] = self._parse_list(parser.get(report_section, 'exclude_lines'))
+            if parser.has_option(report_section, 'metrics'):
+                report_data['metrics'] = list(self._parse_list(parser.get(report_section, 'metrics')))
 
-        # parse report section
-        if report_section and parser.has_option(report_section, 'exclude_lines'):
-            val = parser.get(report_section, 'exclude_lines')
-            config.exclude_lines.update(self._parse_list(val))
-
-        if report_section and parser.has_option(report_section, 'metrics'):
-            val = parser.get(report_section, 'metrics')
-            config.report_metrics = list(self._parse_list(val))
-
-        # parse paths section
+        paths_data = {}
         if paths_section:
             for option in parser.options(paths_section):
-                val = parser.get(paths_section, option)
-                # key is the canonical name, Value is list of paths
-                config.paths[option] = list(self._parse_list(val))
+                paths_data[option] = list(self._parse_list(parser.get(paths_section, option)))
 
+        self._populate_config(run_data, report_data, paths_data, config)
         return True
 
     def _load_toml(self, path: str, config: CoverageConfig) -> None:
@@ -135,14 +129,10 @@ class ConfigLoader:
             data = tomllib.load(f)  # type: ignore
 
         tool = data.get('tool', {}).get('coverage', {})
-        run = tool.get('run', {})
-        report = tool.get('report', {})
-        paths = tool.get('paths', {})
+        self._populate_config(tool.get('run', {}), tool.get('report', {}), tool.get('paths', {}), config)
 
-        if not run and not report and not paths:
-            return
-
-        # run section
+    def _populate_config(self, run: Dict[str, Any], report: Dict[str, Any], paths: Dict[str, Any], config: CoverageConfig) -> None:
+        """Helper to populate CoverageConfig from raw dictionary data."""
         if 'omit' in run:
             config.omit.update(run['omit'])
         if 'include' in run:
@@ -156,15 +146,12 @@ class ConfigLoader:
         if 'data_file' in run:
             config.data_file = str(run['data_file'])
 
-        # report section
         if 'exclude_lines' in report:
             config.exclude_lines.update(report['exclude_lines'])
         if 'metrics' in report:
             config.report_metrics = list(report['metrics'])
 
-        # paths section
         if paths:
-            # TOML structure for paths is Key = [List]
             config.paths = paths
 
     def _parse_list(self, raw_str: str) -> Set[str]:

@@ -46,12 +46,9 @@ class HtmlReporter(BaseReporter):
 
                 # Aggregate totals
                 key = m.key
-                if 'total_possible' in metric_data:
-                    totals[key]['possible'] += metric_data['total_possible']
-                    totals[key]['missing'] += metric_data['total_missing']
-                else:
-                    totals[key]['possible'] += len(metric_data.get('possible', []))
-                    totals[key]['missing'] += len(metric_data.get('missing', []))
+                poss, exc = m.formatter.get_totals(metric_data)
+                totals[key]['possible'] += poss
+                totals[key]['missing'] += (poss - exc)
 
             if not has_statement_data:
                 continue

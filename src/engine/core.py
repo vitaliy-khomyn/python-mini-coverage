@@ -35,6 +35,14 @@ _OriginalProcess = multiprocessing.Process
 _config_local = threading.local()
 
 
+class TraceState(threading.local):
+    def __init__(self) -> None:
+        self.last_line: Optional[int] = None
+        self.last_file: Optional[str] = None
+        self.last_lasti: Optional[int] = None
+        self.last_code_id: Optional[int] = None
+
+
 class CoverageProcess(_OriginalProcess):
     # class-level config to support pickling (set by _patch_multiprocessing)
     _subprocess_setup = {"project_root": None, "config_file": None}
@@ -105,6 +113,19 @@ class MiniCoverage:
         self.storage = CoverageStorage(self.config.data_file)
 
         self.parser = SourceParser()
+        self._initialize_metrics()
+        self._setup_exclusions()
+
+        self.analyzer = Analyzer(self.parser, self.metrics, self.config, self.path_manager, self.excluded_files)
+
+        self.report_manager = ReportManager(self.config)
+
+        self._cache_traceable: Dict[str, bool] = {}
+        self.thread_local = TraceState()
+
+        self._initialize_tracers()
+
+    def _initialize_metrics(self) -> None:
         self.metrics = [
             StatementCoverage(),
             BranchCoverage(),
@@ -116,6 +137,8 @@ class MiniCoverage:
             ExceptionCoverage(),
             ReturnCoverage(),
         ]
+
+    def _setup_exclusions(self) -> None:
         # ensure excluded files are also normalized
         self.excluded_files: Set[str] = set()
 
@@ -125,13 +148,7 @@ class MiniCoverage:
         self._lib_root = self.path_manager.canonicalize(_src_dir)
         self.excluded_files.add(self._lib_root)
 
-        self.analyzer = Analyzer(self.parser, self.metrics, self.config, self.path_manager, self.excluded_files)
-
-        self.report_manager = ReportManager(self.config)
-
-        self._cache_traceable: Dict[str, bool] = {}
-        self.thread_local = threading.local()
-
+    def _initialize_tracers(self) -> None:
         # initialize C Tracer if available
         self.c_tracer = None
         if minicov_tracer:
@@ -295,10 +312,6 @@ class MiniCoverage:
     def _record_line(self, filename: str, lineno: int, cid: int) -> None:
         self.trace_data.add_line(filename, cid, lineno)
 
-        if not hasattr(self.thread_local, 'last_line'):
-            self.thread_local.last_line = None
-            self.thread_local.last_file = None
-
         last_file = self.thread_local.last_file
         last_line = self.thread_local.last_line
 
@@ -309,13 +322,6 @@ class MiniCoverage:
         self.thread_local.last_file = filename
 
     def _record_opcode(self, filename: str, code_id: int, current_lasti: int, cid: int) -> None:
-        if not hasattr(self.thread_local, 'last_lasti'):
-            self.thread_local.last_lasti = None
-            self.thread_local.last_code_id = None
-            if not hasattr(self.thread_local, 'last_file'):
-                self.thread_local.last_file = None
-            # do not reset last_line here as it might be set by _record_line
-
         last_lasti = self.thread_local.last_lasti
         last_code_id = getattr(self.thread_local, 'last_code_id', None)
 
@@ -325,6 +331,14 @@ class MiniCoverage:
         self.thread_local.last_lasti = current_lasti
         self.thread_local.last_file = filename
         self.thread_local.last_code_id = code_id
+
+    def is_traceable(self, filename: str) -> bool:
+        """
+        Check if a file should be traced, utilizing a high-speed cache.
+        """
+        if filename not in self._cache_traceable:
+            self._cache_traceable[filename] = self._should_trace(filename)
+        return self._cache_traceable[filename]
 
     def _should_trace(self, filename: str) -> bool:
         """

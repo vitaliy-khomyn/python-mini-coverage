@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Set, Dict, Any
+from typing import Set, Dict, Any, Callable, Optional
 
 
 class CoverageMetric(ABC):
@@ -38,7 +38,7 @@ class CoverageMetric(ABC):
         """
         raise NotImplementedError
 
-    def calculate_stats(self, possible_elements: Set[Any], executed_data: Set[Any]) -> Dict[str, Any]:
+    def calculate_stats(self, possible_elements: Set[Any], executed_data: Set[Any], key: Optional[Callable[[Any], Any]] = None) -> Dict[str, Any]:
         """
         Compare possible elements against executed data to calculate coverage.
 
@@ -58,7 +58,11 @@ class CoverageMetric(ABC):
                 'ratio': "0/0"
             }
 
-        hit = possible_elements.intersection(executed_data)
+        if key:
+            hit = {el for el in possible_elements if key(el) in executed_data}
+        else:
+            hit = possible_elements.intersection(executed_data)
+
         missing = possible_elements - hit
         pct = (len(hit) / len(possible_elements)) * 100
         ratio = f"{len(hit)}/{len(possible_elements)}"

@@ -17,6 +17,27 @@ class Analyzer:
         self.path_manager = path_manager
         self.excluded_files = excluded_files
 
+    def _map_raw_files(self, trace_data: Dict[str, Dict[Any, Any]]) -> Dict[str, List[str]]:
+        """Identify all unique files by normalized path to handle duplicates."""
+        file_map = defaultdict(list)
+        all_raw_files = (
+            set(trace_data['lines'].keys()) |
+            set(trace_data['arcs'].keys()) |
+            set(trace_data['instruction_arcs'].keys())
+        )
+        for f in all_raw_files:
+            file_map[self.path_manager.canonicalize(f)].append(f)
+        return file_map
+
+    def _aggregate_data_for_file(self, raw_files: List[str], trace_data: Dict[str, Any]) -> Dict[str, Set[Any]]:
+        """Aggregates all trace data for a set of raw file paths that map to one canonical file."""
+        aggregated = {'lines': set(), 'arcs': set(), 'instruction_arcs': set()}
+        for key in aggregated.keys():
+            for rf in raw_files:
+                for ctx_data in trace_data[key].get(rf, {}).values():
+                    aggregated[key].update(ctx_data)
+        return aggregated
+
     def analyze(self, trace_data: Dict[str, Dict[Any, Any]]) -> Dict[str, Dict[str, Any]]:
         """
         Perform static analysis and compare with collected dynamic data.
@@ -29,23 +50,11 @@ class Analyzer:
         """
         full_results = {}
 
-        # 1. identify all unique files by normalized path to handle duplicates (raw vs normalized)
-        file_map = defaultdict(list)
-        all_raw_files = (
-            set(trace_data['lines'].keys()) |
-            set(trace_data['arcs'].keys()) |
-            set(trace_data['instruction_arcs'].keys())
-        )
-
-        for f in all_raw_files:
-            norm = self.path_manager.canonicalize(f)
-            file_map[norm].append(f)
+        file_map = self._map_raw_files(trace_data)
 
         exclude_patterns = self.config.exclude_lines
 
         for norm_file, raw_files in file_map.items():
-            # 2. aggregate data from all raw aliases
-            # use the first raw file as canonical, preferring existing ones
             canonical_filename = raw_files[0]
             for rf in raw_files:
                 if os.path.exists(rf):
@@ -55,31 +64,8 @@ class Analyzer:
             if not self.path_manager.should_trace(canonical_filename, self.excluded_files):
                 continue
 
-            # aggregate lines
-            aggregated_lines = set()
-            for rf in raw_files:
-                for ctx_lines in trace_data['lines'][rf].values():
-                    aggregated_lines.update(ctx_lines)
+            aggregated_data = self._aggregate_data_for_file(raw_files, trace_data)
 
-            # aggregate arcs
-            aggregated_arcs = set()
-            for rf in raw_files:
-                for ctx_arcs in trace_data['arcs'][rf].values():
-                    aggregated_arcs.update(ctx_arcs)
-
-            # aggregate instruction arcs
-            aggregated_instr = set()
-            for rf in raw_files:
-                for ctx_instr in trace_data['instruction_arcs'][rf].values():
-                    aggregated_instr.update(ctx_instr)
-
-            aggregated_data = {
-                'lines': aggregated_lines,
-                'arcs': aggregated_arcs,
-                'instruction_arcs': aggregated_instr
-            }
-
-            # 3. parse and calculate metrics
             ast_tree, ignored_lines = self.parser.parse_source(canonical_filename, exclude_patterns)
             if not ast_tree:
                 continue

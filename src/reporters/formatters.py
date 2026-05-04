@@ -1,6 +1,6 @@
 import html
 import collections
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 
 class BaseFormatter:
@@ -11,11 +11,23 @@ class BaseFormatter:
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
         return {}
 
+    def get_totals(self, stats: Dict[str, Any]) -> Tuple[int, int]:
+        """Returns (total_possible, total_executed) for the metric."""
+        if 'total_possible' in stats:
+            poss = stats['total_possible']
+            miss = stats.get('total_missing', 0)
+            return poss, poss - miss
+        else:
+            poss = len(stats.get('possible', []))
+            hit = len(stats.get('executed', []))
+            return poss, hit
+
 
 class StatementFormatter(BaseFormatter):
     def format_console(self, stats: Dict[str, Any]) -> str:
         missing = stats.get('missing', set())
-        if not missing: return ""
+        if not missing:
+            return ""
         missing_list = sorted(list(missing))
         if len(missing_list) > 5:
             return f"L{missing_list[0]}..L{missing_list[-1]}"

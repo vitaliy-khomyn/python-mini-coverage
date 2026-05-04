@@ -43,10 +43,7 @@ class SysMonitoringTracer(BaseTracer):
         """
         filename = code.co_filename
 
-        if filename not in self.engine._cache_traceable:
-            self.engine._cache_traceable[filename] = self.engine._should_trace(filename)
-
-        if self.engine._cache_traceable[filename]:
+        if self.engine.is_traceable(filename):
             # enable LINE and BRANCH events for this code object
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code,
                                             sys.monitoring.events.LINE | sys.monitoring.events.BRANCH | sys.monitoring.events.PY_RESUME)
