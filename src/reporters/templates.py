@@ -94,7 +94,7 @@ def render_file(filename: str, code_html: str) -> str:
     <title>Coverage: {filename}</title>
     <style>
         body {{ font-family: monospace; white-space: pre; margin: 0; padding: 0; }}
-        .line {{ display: block; padding: 0 5px; }}
+        .line {{ display: block; padding: 0 5px; clear: both; }}
         .lineno {{ color: #999; padding-right: 10px; user-select: none; }}
         .hit {{ background-color: #d4edda; }}
         .miss {{ background-color: #f8d7da; }}
@@ -112,6 +112,7 @@ def render_file(filename: str, code_html: str) -> str:
             font-family: sans-serif;
             white-space: normal;
             font-size: 0.9em;
+            clear: both;
         }}
         .line.has-details {{ cursor: pointer; }}
         .condition-table {{ width: auto; border-collapse: collapse; font-size: 0.9em; margin-top: 5px; border: 1px solid #721c24; }}
