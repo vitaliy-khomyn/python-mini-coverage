@@ -2,6 +2,7 @@ import types
 import collections
 import dis
 import sys
+import ast
 from typing import Set, Tuple, Optional, Dict, Any, List
 from .base import CoverageMetric
 
@@ -45,6 +46,22 @@ class ConditionCoverage(CoverageMetric):
 
     def get_required_dynamic_data(self) -> str:
         return 'instruction_arcs'
+
+    def set_ast(self, tree: ast.AST) -> None:
+        self.valid_condition_lines = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.If, ast.While, ast.Assert, ast.IfExp, ast.BoolOp, ast.Compare)):
+                self._add_lines(node)
+            elif hasattr(ast, 'Match') and isinstance(node, getattr(ast, 'Match', type(None))):
+                self._add_lines(node)
+            elif isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                self._add_lines(node)
+
+    def _add_lines(self, node: ast.AST) -> None:
+        start = getattr(node, 'lineno', -1)
+        end = getattr(node, 'end_lineno', start)
+        if start > 0:
+            self.valid_condition_lines.update(range(start, end + 1))
 
     def get_possible_elements(
         self,
@@ -90,18 +107,33 @@ class ConditionCoverage(CoverageMetric):
         instructions = self._get_instructions(co)
         code_id = co.co_firstlineno
 
+        current_line = code_id
         for i, instr in enumerate(instructions):
+            if getattr(instr, 'starts_line', None) is not None:
+                current_line = instr.starts_line
+
             # instructions relevant for boolean logic
             # includes python 3.11+ directional variants
             is_bool_jump = instr.opname in self.BOOL_OPS
 
             if is_bool_jump:
+                # Ignore artificial compiler instructions that lack a line number
+                if hasattr(instr, 'positions'):
+                    lineno = instr.positions.lineno if instr.positions else None
+                else:
+                    lineno = current_line
+
+                if not lineno:
+                    continue
+
+                if hasattr(self, 'valid_condition_lines') and lineno not in self.valid_condition_lines:
+                    continue
+
                 # 1. target arc (Jump Taken)
                 target = int(instr.argval)
                 arcs.add((code_id, instr.offset, target))
 
                 # 2. fallthrough arc (Jump Not Taken)
-                # ensure we don't go out of bounds
                 next_offset = self._find_next_instr(instructions, i)
                 if next_offset is not None:
                     arcs.add((code_id, instr.offset, next_offset))
@@ -151,13 +183,22 @@ class ConditionCoverage(CoverageMetric):
         except Exception:
             return
 
-        offset_to_line = {off: line for start, end, line in co.co_lines() if line is not None for off in range(start, end, 2)}
-
+        current_line = co.co_firstlineno
         line_ops = collections.defaultdict(list)
         for i, instr in enumerate(instructions):
+            if getattr(instr, 'starts_line', None) is not None:
+                current_line = instr.starts_line
+
             if instr.opname in self.BOOL_OPS:
-                lineno = offset_to_line.get(instr.offset, co.co_firstlineno)
+                if hasattr(instr, 'positions'):
+                    lineno = instr.positions.lineno if instr.positions else None
+                else:
+                    lineno = current_line
+
                 if lineno and lineno > 0:
+                    if hasattr(self, 'valid_condition_lines') and lineno not in self.valid_condition_lines:
+                        continue
+
                     line_ops[lineno].append({
                         'instr': instr,
                         'next_offset': self._find_next_instr(instructions, i),

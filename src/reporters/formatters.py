@@ -66,6 +66,17 @@ class ConditionFormatter(BaseFormatter):
                 annotations[lineno].append(table)
         return dict(annotations)
 
+    def get_totals(self, stats: Dict[str, Any]) -> Tuple[int, int]:
+        missing_outcomes = stats.get('missing_outcomes')
+        if missing_outcomes is not None:
+            tot_poss = 0
+            tot_miss = 0
+            for line_stats in missing_outcomes.values():
+                tot_poss += line_stats.get('total', 0)
+                tot_miss += len(line_stats.get('missing', []))
+            return tot_poss, tot_poss - tot_miss
+        return super().get_totals(stats)
+
 
 def _simple_count_formatter(name: str):
     class SimpleFormatter(BaseFormatter):

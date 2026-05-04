@@ -74,6 +74,9 @@ class Analyzer:
 
             file_results = {}
             for metric in self.metrics:
+                if metric.get_name() == "Condition" and hasattr(metric, 'set_ast'):
+                    metric.set_ast(ast_tree)
+
                 static_source_type = metric.get_required_static_source()
                 dynamic_data_key = metric.get_required_dynamic_data()
 

@@ -129,6 +129,43 @@ partial_condition(True, False, False)
         self.assertTrue(any(v.startswith('False') for v in missing_vectors),
                       f"Should report missing 'False' outcome for condition 'a'. Got: {missing_map}")
 
+    def test_condition_nested_function_signatures_ignored(self):
+        """
+        Verify that nested functions and function signatures (and their compiler artifacts)
+        do not incorrectly trigger condition coverage.
+        """
+        code = """
+def outer(x: bool, y: bool) -> bool:
+    def inner(z: bool) -> bool:
+        if x and z:
+            return True
+        return False
+    return inner(y)
+
+outer(True, False)
+"""
+        script_path = os.path.join(self.test_dir, "condition_nested.py")
+        with open(script_path, "w") as f:
+            f.write(code)
+
+        # Run coverage
+        cov = MiniCoverage(project_root=self.test_dir)
+        cov.run(script_path)
+
+        # Analyze results
+        results = cov.analyze()
+        canonical_path = cov.path_manager.canonicalize(script_path)
+
+        cond_stats = results[canonical_path].get('Condition', {})
+        missing_outcomes = cond_stats.get('missing_outcomes', {})
+
+        # def outer (line 2) and def inner (line 3) should be entirely ignored
+        self.assertNotIn(2, missing_outcomes, "Function signature for 'outer' should not have condition coverage")
+        self.assertNotIn(3, missing_outcomes, "Function signature for 'inner' should not have condition coverage")
+
+        # 'if x and z:' (line 4) should be successfully tracked and partially missing
+        self.assertIn(4, missing_outcomes, "The actual condition on line 4 should be measured")
+        self.assertGreater(len(missing_outcomes[4]['missing']), 0, "Condition on line 4 should be partially missing")
 
 if __name__ == '__main__':
     unittest.main()
