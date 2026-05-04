@@ -211,6 +211,16 @@ class MiniCoverage:
         # optimization: fast lookup without lock if possible (GIL makes dict read atomic-ish)
         return self.context_cache.get(self.current_context, 0)
 
+    def _start_new_frame(self) -> None:
+        """
+        Resets thread-local history to prevent arcs between unrelated functions.
+        Called by tracers on function entry events ('call', 'PY_START', 'PY_RESUME').
+        """
+        self.thread_local.last_line = None
+        self.thread_local.last_lasti = None
+        self.thread_local.last_file = None
+        self.thread_local.last_code_id = None
+
     def save_data(self) -> None:
         """
         Dump the in-memory coverage data to a unique SQLite file via Storage Manager.

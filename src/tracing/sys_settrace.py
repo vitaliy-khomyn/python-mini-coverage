@@ -29,18 +29,12 @@ class SysSetTraceTracer(BaseTracer):
         """
         # enable opcode tracing for this frame
         if event == 'call':
+            self.engine._start_new_frame()
             frame.f_trace_opcodes = True
-            # clear history to prevent cross-function arcs
-            if hasattr(self.engine.thread_local, 'last_line'):
-                self.engine.thread_local.last_line = None
-                self.engine.thread_local.last_lasti = None
             return self.trace_function
 
         if event == 'return':
-            # clear history to prevent cross-function arcs
-            if hasattr(self.engine.thread_local, 'last_line'):
-                self.engine.thread_local.last_line = None
-                self.engine.thread_local.last_lasti = None
+            self.engine._start_new_frame()
             return self.trace_function
 
         if event not in ('line', 'opcode'):

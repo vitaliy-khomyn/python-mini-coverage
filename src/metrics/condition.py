@@ -116,135 +116,20 @@ class ConditionCoverage(CoverageMetric):
         Map missing bytecode arcs to source line numbers with human-readable labels.
         Returns: {lineno: {'missing': [{'vector': '...', 'terminal': bool}], 'ratio': '3/4'}}
         """
-        # We will accumulate stats per line across all code objects (handling lambdas etc)
+        # Accumulate stats per line across all code objects (handling lambdas etc)
         # Structure: lineno -> {'total': int, 'missing': [str]}
         global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': []})
 
         if not missing_arcs or not code_obj:
             return {}
 
-        def _visit_code(co):
-            # Recurse into nested code objects (lambdas, comprehensions, inner functions)
-            for const in co.co_consts:
-                if isinstance(const, types.CodeType):
-                    _visit_code(const)
-
-            code_id = co.co_firstlineno
-            try:
-                instructions = self._get_instructions(co)
-            except Exception:
-                return
-
-            # 1. Collect boolean instructions for this code object, grouped by line
-            # We need a reliable offset-to-line mapping
-            offset_to_line = {}
-            if hasattr(co, 'co_lines'):
-                for start, end, line in co.co_lines():
-                    if line is not None:
-                        for off in range(start, end, 2):
-                            offset_to_line[off] = line
-
-            line_ops = collections.defaultdict(list)
-            for i, instr in enumerate(instructions):
-                if instr.opname in self.BOOL_OPS:
-                    lineno = offset_to_line.get(instr.offset, co.co_firstlineno)
-                    if lineno and lineno > 0:
-                        # We need next_offset to identify the fallthrough arc
-                        next_offset = None
-                        next_offset = self._find_next_instr(instructions, i)
-
-                        line_ops[lineno].append({
-                            'instr': instr,
-                            'next_offset': next_offset
-                        })
-
-            # 2. Analyze each line's boolean logic to construct vectors
-            for lineno, ops in line_ops.items():
-                # Sort by offset to establish evaluation order
-                ops.sort(key=lambda x: x['instr'].offset)
-
-                # Calculate total terminal paths for this line
-                # For a sequence of N boolean ops, there are N+1 terminal paths.
-                global_line_stats[lineno]['total'] += len(ops) + 1
-
-                for i, op_data in enumerate(ops):
-                    instr = op_data['instr']
-                    next_offset = op_data['next_offset']
-
-                    # Determine values
-                    jump_val, fall_val = self._get_branch_labels(instr.opname)
-
-                    # Construct "Prefix": The path required to reach this condition.
-                    # We assume sequential evaluation: to reach op[i], we must have fallen through op[0]...op[i-1]
-                    prefix = []
-                    for prev_op in ops[:i]:
-                        _, prev_fall_val = self._get_branch_labels(prev_op['instr'].opname)
-                        prefix.append(prev_fall_val)
-
-                    # Suffix length (remaining conditions on this line)
-                    suffix_len = len(ops) - 1 - i
-
-                    # Check Jump Arc (Short-circuit path)
-                    target = int(instr.argval)
-                    jump_key = (code_id, instr.offset, target)
-                    if jump_key in missing_arcs:
-                        # If we jump, we skip the suffix. Represent skipped as "-"
-                        vector = prefix + [jump_val] + ["-"] * suffix_len
-                        global_line_stats[lineno]['missing'].append({
-                            'vector': vector,
-                            'terminal': True
-                        })
-
-                    # Check Fallthrough Arc (Continue path)
-                    if next_offset is not None:
-                        fall_key = (code_id, instr.offset, next_offset)
-                        if fall_key in missing_arcs:
-                            vector = prefix + [fall_val] + ["..."] * suffix_len
-                            global_line_stats[lineno]['missing'].append({
-                                'vector': vector,
-                                'terminal': (i == len(ops) - 1)
-                            })
-
-        _visit_code(code_obj)
+        self._collect_line_ops(code_obj, global_line_stats)
+        self._analyze_line_ops(global_line_stats, missing_arcs)
 
         # Format the result
         result = {}
         for lineno, stats in global_line_stats.items():
-            # Calculate clean_missing regardless of whether it's empty
-            clean_missing = []
-            if stats['missing']:
-                # Filter redundant intermediate vectors (e.g. remove "True, ..." if "True, False" exists)
-                raw_items = stats['missing']
-                indices_to_remove = set()
-
-                for i, item_a in enumerate(raw_items):
-                    if item_a['terminal']:
-                        continue
-
-                    vec_a = item_a['vector']
-                    # Find prefix before "..."
-                    try:
-                        stop_idx = vec_a.index("...")
-                        prefix_a = vec_a[:stop_idx]
-                    except ValueError:
-                        prefix_a = vec_a
-
-                    # Check if extended by any other vector
-                    for j, item_b in enumerate(raw_items):
-                        if i == j:
-                            continue
-                        vec_b = item_b['vector']
-                        if len(vec_b) >= len(prefix_a) and vec_b[:len(prefix_a)] == prefix_a:
-                            indices_to_remove.add(i)
-                            break
-
-                for i, item in enumerate(raw_items):
-                    if i not in indices_to_remove:
-                        clean_missing.append({
-                            'vector': ", ".join(item['vector']),
-                            'terminal': item['terminal']
-                        })
-
+            clean_missing = self._filter_redundant_vectors(stats.get('missing', []))
             covered = stats['total'] - len(clean_missing)
             ratio = f"{covered}/{stats['total']}"
             result[lineno] = {
@@ -253,5 +138,86 @@ class ConditionCoverage(CoverageMetric):
                 'covered': covered,
                 'total': stats['total']
             }
-
         return result
+
+    def _collect_line_ops(self, co: types.CodeType, line_stats: Dict[int, Any]) -> None:
+        """Recursively visit code objects and group boolean instructions by line number."""
+        for const in co.co_consts:
+            if isinstance(const, types.CodeType):
+                self._collect_line_ops(const, line_stats)
+
+        try:
+            instructions = self._get_instructions(co)
+        except Exception:
+            return
+
+        offset_to_line = {off: line for start, end, line in co.co_lines() if line is not None for off in range(start, end, 2)}
+
+        line_ops = collections.defaultdict(list)
+        for i, instr in enumerate(instructions):
+            if instr.opname in self.BOOL_OPS:
+                lineno = offset_to_line.get(instr.offset, co.co_firstlineno)
+                if lineno and lineno > 0:
+                    line_ops[lineno].append({
+                        'instr': instr,
+                        'next_offset': self._find_next_instr(instructions, i),
+                        'code_id': co.co_firstlineno
+                    })
+
+        for lineno, ops in line_ops.items():
+            ops.sort(key=lambda x: x['instr'].offset)
+            line_stats[lineno].setdefault('ops', []).extend(ops)
+            line_stats[lineno].setdefault('total', 0)
+            line_stats[lineno]['total'] += len(ops) + 1
+
+    def _analyze_line_ops(self, global_line_stats: Dict[int, Any], missing_arcs: Set[Tuple[int, int, int]]) -> None:
+        """Analyze grouped line operations to construct and identify missing boolean vectors."""
+        for lineno, stats in global_line_stats.items():
+            ops = stats.get('ops', [])
+            stats['missing'] = []
+
+            for i, op_data in enumerate(ops):
+                instr, next_offset, code_id = op_data['instr'], op_data['next_offset'], op_data['code_id']
+                jump_val, fall_val = self._get_branch_labels(instr.opname)
+
+                prefix = [self._get_branch_labels(prev_op['instr'].opname)[1] for prev_op in ops[:i]]
+                suffix_len = len(ops) - 1 - i
+
+                # Check Jump Arc (Short-circuit path)
+                target = int(instr.argval)
+                if (code_id, instr.offset, target) in missing_arcs:
+                    vector = prefix + [jump_val] + ["-"] * suffix_len
+                    stats['missing'].append({'vector': vector, 'terminal': True})
+
+                # Check Fallthrough Arc (Continue path)
+                if next_offset is not None and (code_id, instr.offset, next_offset) in missing_arcs:
+                    vector = prefix + [fall_val] + ["..."] * suffix_len
+                    stats['missing'].append({'vector': vector, 'terminal': (i == len(ops) - 1)})
+
+    def _filter_redundant_vectors(self, raw_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Filter out intermediate missing vectors that are covered by more specific ones."""
+        if not raw_items:
+            return []
+
+        indices_to_remove = set()
+        for i, item_a in enumerate(raw_items):
+            if item_a['terminal']:
+                continue
+            vec_a = item_a['vector']
+            try:
+                stop_idx = vec_a.index("...")
+                prefix_a = vec_a[:stop_idx]
+            except ValueError:
+                prefix_a = vec_a
+
+            for j, item_b in enumerate(raw_items):
+                if i == j: continue
+                vec_b = item_b['vector']
+                if len(vec_b) >= len(prefix_a) and vec_b[:len(prefix_a)] == prefix_a:
+                    indices_to_remove.add(i)
+                    break
+
+        return [
+            {'vector': ", ".join(item['vector']), 'terminal': item['terminal']}
+            for i, item in enumerate(raw_items) if i not in indices_to_remove
+        ]

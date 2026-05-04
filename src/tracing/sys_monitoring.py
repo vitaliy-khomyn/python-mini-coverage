@@ -51,10 +51,7 @@ class SysMonitoringTracer(BaseTracer):
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code,
                                             sys.monitoring.events.LINE | sys.monitoring.events.BRANCH | sys.monitoring.events.PY_RESUME)
 
-            # clear history on function entry to prevent cross-function arcs
-            if hasattr(self.engine.thread_local, 'last_line'):
-                self.engine.thread_local.last_line = None
-                self.engine.thread_local.last_lasti = None
+            self.engine._start_new_frame()
         else:
             sys.monitoring.set_local_events(sys.monitoring.COVERAGE_ID, code, 0)
 
@@ -62,10 +59,7 @@ class SysMonitoringTracer(BaseTracer):
         """
         sys.monitoring callback for PY_RESUME.
         """
-        # clear history on function resume to prevent cross-function arcs
-        if hasattr(self.engine.thread_local, 'last_line'):
-            self.engine.thread_local.last_line = None
-            self.engine.thread_local.last_lasti = None
+        self.engine._start_new_frame()
         return None
 
     def _monitor_line(self, code: types.CodeType, line_number: int) -> Any:
