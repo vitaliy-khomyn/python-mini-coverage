@@ -20,6 +20,7 @@ METRICS_REGISTRY = [
     MetricDisplayConfig('class', 'Class', 'Class', 'Classes', 'classes', False),
     MetricDisplayConfig('call', 'Call-Site', 'Call', 'Call-Sites', 'calls', False),
     MetricDisplayConfig('exc', 'Exception', 'Exc', 'Exceptions', 'exceptions', False),
+    MetricDisplayConfig('ret', 'Return', 'Return', 'Returns', 'returns', False),
 ]
 
 

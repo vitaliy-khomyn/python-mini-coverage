@@ -121,6 +121,9 @@ class HtmlReporter(BaseReporter):
         elif metric_name == 'Exception':
             for lineno in missing:
                 annotations[lineno].append("Missed exception handler")
+        elif metric_name == 'Return':
+            for lineno in missing:
+                annotations[lineno].append("Missed return statement")
         elif metric_name == 'Condition':
             missing_outcomes = stats.get('missing_outcomes', {})
             for lineno, cond_info in missing_outcomes.items():

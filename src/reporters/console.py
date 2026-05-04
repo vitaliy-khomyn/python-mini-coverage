@@ -56,6 +56,8 @@ class ConsoleReporter(BaseReporter):
             return f"{len(missing)} calls"
         elif metric_name == 'Exception':
             return f"{len(missing)} exceptions"
+        elif metric_name == 'Return':
+            return f"{len(missing)} returns"
 
         count = len(missing) if isinstance(missing, set) else len(list(missing))
         if count > 0:

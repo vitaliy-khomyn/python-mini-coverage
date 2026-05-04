@@ -8,6 +8,7 @@ from .function import FunctionCoverage
 from .loop import LoopCoverage
 from .class_coverage import ClassCoverage
 from .exception import ExceptionCoverage
+from .return_coverage import ReturnCoverage
 
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "LoopCoverage",
     "ClassCoverage",
     "ExceptionCoverage",
+    "ReturnCoverage",
 ]
