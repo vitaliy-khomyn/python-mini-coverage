@@ -152,7 +152,7 @@ class ConditionCoverage(CoverageMetric):
         # Structure: lineno -> {'total': int, 'missing': [str]}
         global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': []})
 
-        if not missing_arcs or not code_obj:
+        if not code_obj:
             return {}
 
         self._collect_line_ops(code_obj, global_line_stats)

@@ -9,6 +9,7 @@ from .loop import LoopCoverage
 from .class_coverage import ClassCoverage
 from .exception import ExceptionCoverage
 from .return_coverage import ReturnCoverage
+from .mcdc import MMCDCCoverage
 
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "ClassCoverage",
     "ExceptionCoverage",
     "ReturnCoverage",
+    "MMCDCCoverage",
 ]

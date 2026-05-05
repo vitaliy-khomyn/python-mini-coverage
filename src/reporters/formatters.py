@@ -78,6 +78,19 @@ class ConditionFormatter(BaseFormatter):
         return super().get_totals(stats)
 
 
+class MMCDCFormatter(ConditionFormatter):
+    def format_console(self, stats: Dict[str, Any]) -> str:
+        missing_outcomes = stats.get('missing_outcomes', {})
+        count = sum(len(m.get('missing', [])) for m in missing_outcomes.values())
+        if count > 0: return f"{count} MMC/DC missed"
+        return ""
+
+    def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
+        html_map = super().format_html(stats)
+        # Rename the generic table header for MMC/DC specifically
+        return {k: [v.replace("Condition Coverage", "MMC/DC Coverage") for v in vals] for k, vals in html_map.items()}
+
+
 def _simple_count_formatter(name: str):
     class SimpleFormatter(BaseFormatter):
         def format_console(self, stats: Dict[str, Any]) -> str:

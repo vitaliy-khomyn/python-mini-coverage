@@ -2,7 +2,7 @@ from typing import List, Any
 from .formatters import (
     BaseFormatter, StatementFormatter, BranchFormatter, ConditionFormatter,
     FunctionFormatter, LoopFormatter, ClassFormatter, CallSiteFormatter,
-    ExceptionFormatter, ReturnFormatter
+    ExceptionFormatter, ReturnFormatter, MMCDCFormatter
 )
 
 
@@ -27,6 +27,7 @@ METRICS_REGISTRY = [
     MetricDisplayConfig('call', 'Call-Site', 'Call', 'Call-Sites', 'calls', CallSiteFormatter(), False),
     MetricDisplayConfig('exc', 'Exception', 'Exc', 'Exceptions', 'exceptions', ExceptionFormatter(), False),
     MetricDisplayConfig('ret', 'Return', 'Return', 'Returns', 'returns', ReturnFormatter(), False),
+    MetricDisplayConfig('mmcdc', 'MMC/DC', 'MMC/DC', 'MMC/DC', 'mmcdc', MMCDCFormatter(), False),
 ]
 
 

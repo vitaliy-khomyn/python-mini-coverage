@@ -27,6 +27,7 @@ from ..metrics import StatementCoverage, BranchCoverage, ConditionCoverage, Func
 from ..metrics.call_site import CallSiteCoverage
 from ..metrics.exception import ExceptionCoverage
 from ..metrics.return_coverage import ReturnCoverage
+from ..metrics.mcdc import MMCDCCoverage
 from .storage import CoverageStorage
 
 _OriginalProcess = multiprocessing.Process
@@ -136,6 +137,7 @@ class MiniCoverage:
             CallSiteCoverage(),
             ExceptionCoverage(),
             ReturnCoverage(),
+            MMCDCCoverage(),
         ]
 
     def _setup_exclusions(self) -> None:
