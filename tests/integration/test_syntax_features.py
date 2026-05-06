@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import asyncio  # noqa: F401
 from src.engine import MiniCoverage
+from src.engine.trace_data import TraceDataType
 
 
 class TestSyntaxFeatures(unittest.TestCase):
@@ -29,7 +30,7 @@ class TestSyntaxFeatures(unittest.TestCase):
         cov = MiniCoverage(project_root=self.test_dir)
         cov.run(script_path)
         canonical_path = cov.path_manager.canonicalize(script_path)
-        return cov.trace_data['lines'][canonical_path]
+        return cov.trace_data[TraceDataType.LINES][canonical_path]
 
     def test_generator_coverage(self):
         code = """

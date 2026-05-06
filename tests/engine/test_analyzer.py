@@ -3,6 +3,7 @@ import ast
 from unittest.mock import MagicMock, patch
 from src.engine import MiniCoverage
 from tests.test_utils import BaseTestCase
+from src.engine.trace_data import TraceDataType
 
 
 class TestAnalyzer(BaseTestCase):
@@ -18,8 +19,8 @@ class TestAnalyzer(BaseTestCase):
                     f1 = "File.py"
                     f2 = "file.py"
 
-                    self.cov.trace_data['lines'][f1][0].add(1)
-                    self.cov.trace_data['lines'][f2][0].add(2)
+                    self.cov.trace_data[TraceDataType.LINES][f1][0].add(1)
+                    self.cov.trace_data[TraceDataType.LINES][f2][0].add(2)
 
                     real_ast = ast.parse("x=1\ny=2")
                     real_code = compile("x=1\ny=2", "file.py", "exec")

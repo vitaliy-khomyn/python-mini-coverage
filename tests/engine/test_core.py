@@ -8,6 +8,7 @@ from contextlib import closing
 from unittest.mock import MagicMock, patch
 import types
 from src.engine import MiniCoverage
+from src.engine.trace_data import TraceDataType
 from src.engine import queries  # noqa: F401
 from tests.test_utils import BaseTestCase, MockFrame
 
@@ -112,7 +113,7 @@ class TestEngineCore(BaseTestCase):
         frame = MockFrame(filename, 10)
         self.cov.sys_settrace_tracer.trace_function(frame, "line", None)
         # default context is 0
-        self.assertIn(10, self.cov.trace_data['lines'][filename][0])
+        self.assertIn(10, self.cov.trace_data[TraceDataType.LINES][filename][0])
 
     def test_trace_function_arc_capture_same_file(self):
         filename = os.path.join(self.test_dir, "test.py")
@@ -120,7 +121,7 @@ class TestEngineCore(BaseTestCase):
         self.cov.sys_settrace_tracer.trace_function(f1, "line", None)
         f2 = MockFrame(filename, 11)
         self.cov.sys_settrace_tracer.trace_function(f2, "line", None)
-        self.assertIn((10, 11), self.cov.trace_data['arcs'][filename][0])
+        self.assertIn((10, 11), self.cov.trace_data[TraceDataType.ARCS][filename][0])
 
     def test_trace_function_arc_cross_file_reset(self):
         f1 = os.path.join(self.test_dir, "a.py")
@@ -130,10 +131,10 @@ class TestEngineCore(BaseTestCase):
         self.cov.sys_settrace_tracer.trace_function(MockFrame(f2, 1), "line", None)
 
         # should NOT link a.py:1 -> b.py:1
-        self.assertEqual(len(self.cov.trace_data['arcs'][f1][0]), 0)
+        self.assertEqual(len(self.cov.trace_data[TraceDataType.ARCS][f1][0]), 0)
 
         self.cov.sys_settrace_tracer.trace_function(MockFrame(f2, 2), "line", None)
-        self.assertIn((1, 2), self.cov.trace_data['arcs'][f2][0])
+        self.assertIn((1, 2), self.cov.trace_data[TraceDataType.ARCS][f2][0])
 
     def test_context_switching(self):
         self.cov.switch_context("ctx1")
@@ -185,7 +186,7 @@ class TestEngineCore(BaseTestCase):
 
     def test_save_data_sqlite(self):
         filename = os.path.join(self.test_dir, "test.py")
-        self.cov.trace_data['lines'][filename][0].add(1)
+        self.cov.trace_data[TraceDataType.LINES][filename][0].add(1)
 
         self.cov.save_data()
 
@@ -208,7 +209,7 @@ class TestEngineCore(BaseTestCase):
         self.cov.storage.data_file = "custom.sqlite"
 
         filename = os.path.join(self.test_dir, "test.py")
-        self.cov.trace_data['lines'][filename][0].add(1)
+        self.cov.trace_data[TraceDataType.LINES][filename][0].add(1)
         self.cov.save_data()
 
         files = [f for f in os.listdir(self.test_dir) if "custom.sqlite" in f]
@@ -238,7 +239,7 @@ class TestEngineCore(BaseTestCase):
         th1.join()
         th2.join()
 
-        arcs = self.cov.trace_data['arcs'][filename][0]
+        arcs = self.cov.trace_data[TraceDataType.ARCS][filename][0]
         self.assertIn((10, 11), arcs)
         self.assertIn((20, 21), arcs)
         self.assertNotIn((10, 20), arcs)

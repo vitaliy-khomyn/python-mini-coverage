@@ -1,5 +1,12 @@
 from abc import ABC
 from typing import Set, Dict, Any, Callable, Optional
+from ..engine.trace_data import TraceDataType
+from enum import Enum
+
+
+class StaticSourceType(str, Enum):
+    AST = 'ast'
+    CODE_OBJECT = 'code_object'
 
 
 class CoverageMetric(ABC):
@@ -13,17 +20,17 @@ class CoverageMetric(ABC):
         """
         raise NotImplementedError
 
-    def get_required_static_source(self) -> str:
+    def get_required_static_source(self) -> StaticSourceType:
         """Return 'ast' or 'code_object' to specify static analysis input."""
-        return 'ast'
+        return StaticSourceType.AST
 
-    def get_required_dynamic_data(self) -> str:
+    def get_required_dynamic_data(self) -> TraceDataType:
         """
         Return the key for the dynamic data this metric needs,
         e.g., 'lines', 'arcs', 'instruction_arcs'.
         """
         # Default for Statement and Function coverage
-        return 'lines'
+        return TraceDataType.LINES
 
     def get_possible_elements(self, source: Any, ignored_lines: Set[int]) -> Set[Any]:
         """

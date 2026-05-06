@@ -2,6 +2,8 @@ import os
 from collections import defaultdict
 from typing import Dict, Any, Set, List
 from .config import CoverageConfig
+from .trace_data import TraceDataType
+from ..metrics.base import StaticSourceType
 
 
 class Analyzer:
@@ -21,9 +23,9 @@ class Analyzer:
         """Identify all unique files by normalized path to handle duplicates."""
         file_map = defaultdict(list)
         all_raw_files = (
-            set(trace_data['lines'].keys()) |
-            set(trace_data['arcs'].keys()) |
-            set(trace_data['instruction_arcs'].keys())
+            set(trace_data[TraceDataType.LINES].keys()) |
+            set(trace_data[TraceDataType.ARCS].keys()) |
+            set(trace_data[TraceDataType.INSTRUCTION_ARCS].keys())
         )
         for f in all_raw_files:
             file_map[self.path_manager.canonicalize(f)].append(f)
@@ -31,7 +33,11 @@ class Analyzer:
 
     def _aggregate_data_for_file(self, raw_files: List[str], trace_data: Dict[str, Any]) -> Dict[str, Set[Any]]:
         """Aggregates all trace data for a set of raw file paths that map to one canonical file."""
-        aggregated = {'lines': set(), 'arcs': set(), 'instruction_arcs': set()}
+        aggregated = {
+            TraceDataType.LINES: set(),
+            TraceDataType.ARCS: set(),
+            TraceDataType.INSTRUCTION_ARCS: set()
+        }
         for key in aggregated.keys():
             for rf in raw_files:
                 for ctx_data in trace_data[key].get(rf, {}).values():
@@ -80,7 +86,7 @@ class Analyzer:
                 static_source_type = metric.get_required_static_source()
                 dynamic_data_key = metric.get_required_dynamic_data()
 
-                static_source = ast_tree if static_source_type == 'ast' else code_obj
+                static_source = ast_tree if static_source_type == StaticSourceType.AST else code_obj
                 dynamic_data = aggregated_data.get(dynamic_data_key, set())
 
                 possible = metric.get_possible_elements(static_source, ignored_lines)  # type: ignore

@@ -3,6 +3,7 @@ from typing import Set, Tuple, Optional
 
 from .base import CoverageMetric
 from .visitor import NextStatementVisitor
+from ..engine.trace_data import TraceDataType
 
 
 class LoopCoverage(CoverageMetric):
@@ -14,8 +15,8 @@ class LoopCoverage(CoverageMetric):
     def get_name(self) -> str:
         return "Loop"
 
-    def get_required_dynamic_data(self) -> str:
-        return 'arcs'
+    def get_required_dynamic_data(self) -> TraceDataType:
+        return TraceDataType.ARCS
 
     def get_possible_elements(
         self,

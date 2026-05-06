@@ -3,6 +3,7 @@ from ..reporters.console import ConsoleReporter
 from ..reporters.html import HtmlReporter
 from ..reporters.xml import XmlReporter
 from ..reporters.json import JsonReporter
+from .config import ReporterType
 
 
 class ReportManager:
@@ -10,13 +11,13 @@ class ReportManager:
         self.config = config
         self.reporters = []
         for r in config.reporters:
-            if r == 'console':
+            if r == ReporterType.CONSOLE:
                 self.reporters.append(ConsoleReporter(config))
-            elif r == 'html':
+            elif r == ReporterType.HTML:
                 self.reporters.append(HtmlReporter(config=config, output_dir="htmlcov"))
-            elif r == 'xml':
+            elif r == ReporterType.XML:
                 self.reporters.append(XmlReporter(config=config, output_file="coverage.xml"))
-            elif r == 'json':
+            elif r == ReporterType.JSON:
                 self.reporters.append(JsonReporter(config=config, output_file="coverage.json"))
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:

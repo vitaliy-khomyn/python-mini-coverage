@@ -4,7 +4,8 @@ import dis
 import sys
 import ast
 from typing import Set, Tuple, Optional, Dict, Any, List
-from .base import CoverageMetric
+from .base import CoverageMetric, StaticSourceType
+from ..engine.trace_data import TraceDataType
 
 
 class ConditionCoverage(CoverageMetric):
@@ -41,11 +42,11 @@ class ConditionCoverage(CoverageMetric):
     def get_name(self) -> str:
         return "Condition"
 
-    def get_required_static_source(self) -> str:
-        return 'code_object'
+    def get_required_static_source(self) -> StaticSourceType:
+        return StaticSourceType.CODE_OBJECT
 
-    def get_required_dynamic_data(self) -> str:
-        return 'instruction_arcs'
+    def get_required_dynamic_data(self) -> TraceDataType:
+        return TraceDataType.INSTRUCTION_ARCS
 
     def set_ast(self, tree: ast.AST) -> None:
         self.valid_condition_lines = set()

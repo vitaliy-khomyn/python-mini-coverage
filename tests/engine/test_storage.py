@@ -2,6 +2,7 @@ import unittest
 import sqlite3
 from unittest.mock import MagicMock, patch
 from src.engine import MiniCoverage
+from src.engine.trace_data import TraceDataType
 
 
 class TestStorage(unittest.TestCase):
@@ -9,7 +10,7 @@ class TestStorage(unittest.TestCase):
         self.cov = MiniCoverage()
 
     def test_storage_save_exception(self):
-        self.cov.trace_data['lines']['dummy.py'][0].add(1)
+        self.cov.trace_data[TraceDataType.LINES]['dummy.py'][0].add(1)
         with patch('sqlite3.connect', side_effect=Exception("DB Error")):
             with self.assertLogs('src.engine.storage', level='ERROR') as cm:
                 self.cov.storage.save(self.cov.trace_data, self.cov.context_cache)

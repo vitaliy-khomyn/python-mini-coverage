@@ -1,6 +1,7 @@
 import ast
 from typing import Set, Tuple, Optional
 from .base import CoverageMetric
+from ..engine.trace_data import TraceDataType
 
 
 class BranchCoverage(CoverageMetric):
@@ -11,8 +12,8 @@ class BranchCoverage(CoverageMetric):
     def get_name(self) -> str:
         return "Branch"
 
-    def get_required_dynamic_data(self) -> str:
-        return 'arcs'
+    def get_required_dynamic_data(self) -> TraceDataType:
+        return TraceDataType.ARCS
 
     def get_possible_elements(self, ast_tree: ast.AST, ignored_lines: Set[int]) -> Set[Tuple[int, int]]:
         arcs: Set[Tuple[int, int]] = set()

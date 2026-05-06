@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import multiprocessing  # noqa: F401
 from src.engine import MiniCoverage
+from src.engine.trace_data import TraceDataType
 
 
 class TestMultiprocessing(unittest.TestCase):
@@ -60,7 +61,7 @@ if __name__ == "__main__":
 
         # reload data to see the combined result
         canonical_path = cov.path_manager.canonicalize(script_path)
-        lines = cov.trace_data['lines'][canonical_path][0]
+        lines = cov.trace_data[TraceDataType.LINES][canonical_path][0]
 
         # worker function body is lines 5, 6, 7, 8.
         # if multiprocessing coverage works, these lines must be present.

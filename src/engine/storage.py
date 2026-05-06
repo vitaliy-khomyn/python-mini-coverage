@@ -6,6 +6,7 @@ import uuid
 import time
 from typing import Dict, Any, Callable
 from . import queries
+from .trace_data import TraceDataType
 
 
 class CoverageStorage:
@@ -42,7 +43,7 @@ class CoverageStorage:
         Dump in-memory coverage data to a unique SQLite file.
         """
         # check if there is any data to save
-        has_data = any(trace_data['lines'].values()) or any(trace_data['arcs'].values())
+        has_data = any(trace_data[TraceDataType.LINES].values()) or any(trace_data[TraceDataType.ARCS].values())
         if not has_data:
             return
 
@@ -58,7 +59,7 @@ class CoverageStorage:
 
             # batch insert lines
             line_data = []
-            for file, ctx_map in trace_data['lines'].items():
+            for file, ctx_map in trace_data[TraceDataType.LINES].items():
                 for cid, lines in ctx_map.items():
                     for line in lines:
                         line_data.append((file, cid, line))
@@ -66,7 +67,7 @@ class CoverageStorage:
 
             # batch insert arcs
             arc_data = []
-            for file, ctx_map in trace_data['arcs'].items():
+            for file, ctx_map in trace_data[TraceDataType.ARCS].items():
                 for cid, arcs in ctx_map.items():
                     for start, end in arcs:
                         arc_data.append((file, cid, start, end))
@@ -74,7 +75,7 @@ class CoverageStorage:
 
             # batch insert instruction arcs
             instr_data = []
-            for file, ctx_map in trace_data['instruction_arcs'].items():
+            for file, ctx_map in trace_data[TraceDataType.INSTRUCTION_ARCS].items():
                 for cid, arcs in ctx_map.items():
                     for code_id, start, end in arcs:
                         instr_data.append((file, cid, code_id, start, end))
@@ -150,15 +151,15 @@ class CoverageStorage:
 
             cur.execute(queries.SELECT_LINES)
             for file, line in cur.fetchall():
-                trace_data['lines'][path_manager.canonicalize(file)][0].add(line)
+                trace_data[TraceDataType.LINES][path_manager.canonicalize(file)][0].add(line)
 
             cur.execute(queries.SELECT_ARCS)
             for file, start, end in cur.fetchall():
-                trace_data['arcs'][path_manager.canonicalize(file)][0].add((start, end))
+                trace_data[TraceDataType.ARCS][path_manager.canonicalize(file)][0].add((start, end))
 
             cur.execute(queries.SELECT_INSTRUCTION_ARCS)
             for file, code_id, start, end in cur.fetchall():
-                trace_data['instruction_arcs'][path_manager.canonicalize(file)][0].add((code_id, start, end))
+                trace_data[TraceDataType.INSTRUCTION_ARCS][path_manager.canonicalize(file)][0].add((code_id, start, end))
 
             conn.close()
         except sqlite3.OperationalError as e:

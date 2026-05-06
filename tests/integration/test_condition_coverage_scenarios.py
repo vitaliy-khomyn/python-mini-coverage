@@ -5,6 +5,7 @@ import tempfile
 import types
 from src.engine import MiniCoverage
 from src.metrics.condition import ConditionCoverage
+from src.engine.trace_data import TraceDataType
 
 
 class TestConditionCoverageScenarios(unittest.TestCase):
@@ -55,7 +56,7 @@ full_condition(True, False, False)
         # Analyze results
         canonical_path = cov.path_manager.canonicalize(script_path)
         executed_arcs = set()
-        for raw_path, ctx_map in cov.trace_data['instruction_arcs'].items():
+        for raw_path, ctx_map in cov.trace_data[TraceDataType.INSTRUCTION_ARCS].items():
             if cov.path_manager.canonicalize(raw_path) == canonical_path:
                 for arcs in ctx_map.values():
                     executed_arcs.update(arcs)
@@ -103,7 +104,7 @@ partial_condition(True, False, False)
         # Analyze results
         canonical_path = cov.path_manager.canonicalize(script_path)
         executed_arcs = set()
-        for raw_path, ctx_map in cov.trace_data['instruction_arcs'].items():
+        for raw_path, ctx_map in cov.trace_data[TraceDataType.INSTRUCTION_ARCS].items():
             if cov.path_manager.canonicalize(raw_path) == canonical_path:
                 for arcs in ctx_map.values():
                     executed_arcs.update(arcs)
