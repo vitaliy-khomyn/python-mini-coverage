@@ -1,6 +1,7 @@
 import os
 import html
 import collections
+import tokenize
 from typing import Any, Dict, List
 from .base import BaseReporter, AnalysisResults, FileResults
 from . import templates
@@ -108,7 +109,7 @@ class HtmlReporter(BaseReporter):
                     line_annotations[lineno].extend(ann_list)
 
         try:
-            with open(filename, 'r', encoding='utf-8') as f:
+            with tokenize.open(filename) as f:
                 source_lines = f.readlines()
         except Exception:
             source_lines = ["Error reading source file."]

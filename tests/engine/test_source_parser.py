@@ -72,14 +72,8 @@ class TestSourceParser(BaseTestCase):
         with open(path, 'wb') as f:
             f.write(b"# -*- coding: latin-1 -*-\nx = '\xe9'")  # é
 
-        # parser assumes utf-8 by default but compile might handle magic comment
-        # parse_source opens with utf-8, so it might fail or replace.
-        # compile_source uses default open, which respects coding header if passed to compile?
-        # actually implementation uses open(encoding='utf-8') which will fail for strict latin-1 chars not in utf-8.
-        # this tests graceful failure.
         tree, _ = self.parser.parse_source(path)
-        # should return None due to UnicodeDecodeError
-        self.assertIsNone(tree)
+        self.assertIsNotNone(tree)
 
     def test_parse_os_error(self):
         # Test that parse_source gracefully returns (None, set()) on file I/O errors

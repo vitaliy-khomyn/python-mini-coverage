@@ -2,6 +2,7 @@ import ast
 import re
 import types
 import logging
+import tokenize
 from typing import Tuple, Set, Optional, Iterable
 
 
@@ -33,7 +34,7 @@ class SourceParser:
         """
         ignored_lines: Set[int] = set()
         try:
-            with open(filename, 'r', encoding='utf-8') as f:
+            with tokenize.open(filename) as f:
                 source_lines = f.readlines()
 
             source_text = "".join(source_lines)
@@ -71,7 +72,7 @@ class SourceParser:
             types.CodeType: The compiled code object, or None on failure.
         """
         try:
-            with open(filename, 'r', encoding='utf-8') as f:
+            with tokenize.open(filename) as f:
                 source = f.read()
             return compile(source, filename, 'exec')
         except (SyntaxError, OSError, UnicodeDecodeError) as e:
