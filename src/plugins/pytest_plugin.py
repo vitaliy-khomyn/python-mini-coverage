@@ -46,7 +46,7 @@ def pytest_runtest_setup(item) -> None:
     Switch context before each test.
     Context ID: file.py::class::test_name (nodeid)
     """
-    global _cov_engine
+    global _cov_engine  # noqa: F824
     if _cov_engine:
         _cov_engine.switch_context(item.nodeid)
 
@@ -55,6 +55,6 @@ def pytest_runtest_teardown(item) -> None:
     """
     Revert to default context after test.
     """
-    global _cov_engine
+    global _cov_engine  # noqa: F824
     if _cov_engine:
         _cov_engine.switch_context("default")

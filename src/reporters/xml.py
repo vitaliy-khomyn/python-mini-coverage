@@ -1,8 +1,10 @@
+import collections
 import os
 import time
-import collections
 import xml.etree.ElementTree as ET
+
 from typing import Any
+
 from .base import BaseReporter, AnalysisResults
 from .registry import get_active_metrics
 

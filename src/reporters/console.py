@@ -1,5 +1,6 @@
 import os
 from typing import Any, List
+
 from .base import BaseReporter, AnalysisResults
 from .registry import get_active_metrics
 

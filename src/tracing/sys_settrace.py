@@ -1,7 +1,9 @@
 import sys
 import threading
 import types
+
 from typing import Any, Optional
+
 from .base import BaseTracer
 
 

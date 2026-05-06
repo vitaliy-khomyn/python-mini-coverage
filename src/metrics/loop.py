@@ -1,4 +1,5 @@
 import ast
+
 from typing import Set, Tuple, Optional
 
 from .base import CoverageMetric

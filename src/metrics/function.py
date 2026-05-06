@@ -1,8 +1,9 @@
 import ast
+
 from typing import Set, Tuple, Optional, Dict, Any
 
-from .visitor import BaseVisitor
 from .base import CoverageMetric
+from .visitor import BaseVisitor
 
 # Using a tuple to store info about each function
 # (function_name, definition_line_no, first_executable_line_no)

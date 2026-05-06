@@ -1,7 +1,7 @@
 import argparse
-import sys
-import os
 import logging
+import os
+import sys
 
 from .engine import MiniCoverage
 

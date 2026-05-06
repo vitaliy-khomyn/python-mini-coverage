@@ -1,5 +1,6 @@
 import types
 from typing import Set, Tuple, Optional
+
 from .base import CoverageMetric
 from .cfg import ControlFlowGraph
 

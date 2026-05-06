@@ -1,5 +1,6 @@
 import ast
 from typing import Set, Tuple, Optional
+
 from .base import CoverageMetric
 from ..engine.trace_data import TraceDataType
 

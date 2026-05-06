@@ -1,8 +1,9 @@
 import ast
+
 from typing import Set, Optional
 
-from .visitor import BaseVisitor
 from .base import CoverageMetric
+from .visitor import BaseVisitor
 
 
 class ReturnCoverage(CoverageMetric):

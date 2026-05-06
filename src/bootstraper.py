@@ -3,9 +3,9 @@ This module is intended to be imported during Python startup
 (e.g., via a .pth file in site-packages or sitecustomize.py).
 It checks for environment variables and auto-starts coverage.
 """
+import logging
 import os
 import sys
-import logging
 
 
 def bootstrap():

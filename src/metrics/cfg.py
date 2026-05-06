@@ -1,6 +1,7 @@
 import dis
 import sys
 import types
+
 from typing import Set, Dict, List, Tuple
 
 
@@ -14,7 +15,7 @@ class ControlFlowGraph:
 
     def __init__(self, code: types.CodeType):
         self.code = code
-        # Use show_caches=True to ensure we see all instruction slots (Python 3.11+)
+        # use show_caches=True to ensure we see all instruction slots (Python 3.11+)
         if sys.version_info >= (3, 11):
             self.instructions = list(dis.get_instructions(code, show_caches=True))
         else:

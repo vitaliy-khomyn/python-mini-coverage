@@ -1,10 +1,11 @@
 import ast
+
 from typing import Set, Tuple, Optional, Dict, Any
 
 from .visitor import BaseVisitor
 from .base import CoverageMetric
 
-# Tuple stores: (callable_name, line_no)
+# tuple stores: (callable_name, line_no)
 CallSiteElement = Tuple[str, int]
 
 

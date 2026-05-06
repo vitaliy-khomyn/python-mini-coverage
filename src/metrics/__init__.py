@@ -1,28 +1,29 @@
 from .base import CoverageMetric
-from .cfg import ControlFlowGraph
-from .statement import StatementCoverage
 from .branch import BranchCoverage
-from .condition import ConditionCoverage
 from .bytecode import BytecodeControlFlow
+from .class_coverage import ClassCoverage
+from .cfg import ControlFlowGraph
+from .condition import ConditionCoverage
+from .exception import ExceptionCoverage
 from .function import FunctionCoverage
 from .loop import LoopCoverage
-from .class_coverage import ClassCoverage
-from .exception import ExceptionCoverage
+from .mmcdc import MMCDCCoverage
 from .return_coverage import ReturnCoverage
-from .mcdc import MMCDCCoverage
+from .statement import StatementCoverage
 
 
 __all__ = [
-    "CoverageMetric",
-    "ControlFlowGraph",
-    "StatementCoverage",
-    "BranchCoverage",
-    "ConditionCoverage",
     "BytecodeControlFlow",
-    "FunctionCoverage",
-    "LoopCoverage",
+    "ControlFlowGraph",
+
+    "BranchCoverage",
     "ClassCoverage",
+    "CoverageMetric",
     "ExceptionCoverage",
-    "ReturnCoverage",
+    "FunctionCoverage",
+    "ConditionCoverage",
+    "LoopCoverage",
     "MMCDCCoverage",
+    "ReturnCoverage",
+    "StatementCoverage",
 ]

@@ -1,7 +1,8 @@
 from abc import ABC
-from typing import Set, Dict, Any, Callable, Optional
-from ..engine.trace_data import TraceDataType
 from enum import Enum
+from typing import Set, Dict, Any, Callable, Optional
+
+from ..engine.trace_data import TraceDataType
 
 
 class StaticSourceType(str, Enum):

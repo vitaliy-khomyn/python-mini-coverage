@@ -1,5 +1,6 @@
-import html
 import collections
+import html
+
 from typing import Dict, Any, List, Tuple
 
 

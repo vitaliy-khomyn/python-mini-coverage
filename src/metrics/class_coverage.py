@@ -1,8 +1,9 @@
 import ast
+
 from typing import Set, Tuple, Optional, Dict, Any
 
-from .visitor import BaseVisitor
 from .base import CoverageMetric
+from .visitor import BaseVisitor
 
 # (class_name, definition_line_no, init_first_executable_line_no)
 ClassElement = Tuple[str, int, int]

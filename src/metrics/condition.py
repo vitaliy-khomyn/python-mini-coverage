@@ -1,10 +1,13 @@
-import types
+import ast
 import collections
 import dis
 import sys
-import ast
+import types
+
 from typing import Set, Tuple, Optional, Dict, Any, List
+
 from .base import CoverageMetric, StaticSourceType
+from .boolean_vector import BooleanVectorEvaluator
 from ..engine.trace_data import TraceDataType
 
 
@@ -80,12 +83,6 @@ class ConditionCoverage(CoverageMetric):
         arcs: Set[Tuple[int, int, int]] = set()
         self._analyze_boolean_jumps(code_obj, arcs)
         return arcs
-
-    def _get_branch_labels(self, opname: str) -> Tuple[str, str]:
-        """Returns (jump_label, fallthrough_label) for a boolean opcode."""
-        jump_val = "True" if "TRUE" in opname else "False"
-        fall_val = "False" if jump_val == "True" else "True"
-        return jump_val, fall_val
 
     def _get_instructions(self, co: types.CodeType) -> List[Any]:
         # Use show_caches=True to ensure we see all instruction slots (Python 3.11+)
@@ -222,63 +219,12 @@ class ConditionCoverage(CoverageMetric):
             stats['executed'] = []
             stats['conditions'] = len(ops)
 
-            # Reconstruct executed paths
-            executed_paths = set()
-            stack = [(0, tuple(["-"] * len(ops)))]
-            visited = set()
-
-            while stack:
-                op_idx, vec = stack.pop()
-                if (op_idx, vec) in visited:
-                    continue
-                visited.add((op_idx, vec))
-
-                if op_idx >= len(ops):
-                    continue
-
-                op_data = ops[op_idx]
-                instr, code_id = op_data['instr'], op_data['code_id']
-                target = int(instr.argval)
-                jump_val, fall_val = self._get_branch_labels(instr.opname)
-
-                if (code_id, instr.offset, target) in executed_arcs:
-                    new_vec = list(vec)
-                    new_vec[op_idx] = jump_val
-                    next_idx = next((k for k in range(op_idx + 1, len(ops)) if ops[k]['instr'].offset >= target), None)
-                    if next_idx is not None:
-                        stack.append((next_idx, tuple(new_vec)))
-                    else:
-                        executed_paths.add((tuple(new_vec), jump_val))
-
-                next_offset = op_data['next_offset']
-                if next_offset is not None and (code_id, instr.offset, next_offset) in executed_arcs:
-                    new_vec = list(vec)
-                    new_vec[op_idx] = fall_val
-                    if op_idx == len(ops) - 1:
-                        executed_paths.add((tuple(new_vec), fall_val))
-                    else:
-                        stack.append((op_idx + 1, tuple(new_vec)))
+            executed_paths = BooleanVectorEvaluator.reconstruct_executed_paths(ops, executed_arcs)
 
             for p, out in executed_paths:
                 stats['executed'].append({'vector': list(p), 'result': out})
 
-            for i, op_data in enumerate(ops):
-                instr, next_offset, code_id = op_data['instr'], op_data['next_offset'], op_data['code_id']
-                jump_val, fall_val = self._get_branch_labels(instr.opname)
-
-                prefix = [self._get_branch_labels(prev_op['instr'].opname)[1] for prev_op in ops[:i]]
-                suffix_len = len(ops) - 1 - i
-
-                # Check Jump Arc (Short-circuit path)
-                target = int(instr.argval)
-                if (code_id, instr.offset, target) in missing_arcs:
-                    vector = prefix + [jump_val] + ["-"] * suffix_len
-                    stats['missing'].append({'vector': vector, 'result': jump_val, 'terminal': True})
-
-                # Check Fallthrough Arc (Continue path)
-                if next_offset is not None and (code_id, instr.offset, next_offset) in missing_arcs:
-                    vector = prefix + [fall_val] + ["?"] * suffix_len
-                    stats['missing'].append({'vector': vector, 'result': '?', 'terminal': (i == len(ops) - 1)})
+            stats['missing'].extend(BooleanVectorEvaluator.find_missing_condition_arcs(ops, missing_arcs))
 
     def _filter_redundant_vectors(self, raw_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Filter out intermediate missing vectors that are covered by more specific ones."""

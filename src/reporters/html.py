@@ -2,9 +2,11 @@ import os
 import html
 import collections
 import tokenize
+
 from typing import Any, Dict, List
-from .base import BaseReporter, AnalysisResults, FileResults
+
 from . import templates
+from .base import BaseReporter, AnalysisResults, FileResults
 from .registry import get_active_metrics
 
 
