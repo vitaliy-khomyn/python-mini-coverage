@@ -25,6 +25,7 @@ static int handle_call_or_return(Tracer *self, PyFrameObject *frame, int what) {
     if (PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None) < 0) return -1;
     if (PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None) < 0) return -1;
     if (PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None) < 0) return -1;
+    if (PyObject_SetAttrString(self->engine_thread_local, "last_code_id", Py_None) < 0) return -1;
     return 0;
 }
 
@@ -87,6 +88,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None);
         PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None);
         PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None);
+        PyObject_SetAttrString(self->engine_thread_local, "last_code_id", Py_None);
     }
 
     if (what == PyTrace_LINE) {
@@ -95,13 +97,12 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
             Py_DECREF(filename);
             return -1;
         }
-    }
-
-    // handle OPCODE event - runs for both LINE and OPCODE events
-    if (handle_opcode_event(self, frame, filename, cid) < 0) {
+    } else if (what == PyTrace_OPCODE) {
+        if (handle_opcode_event(self, frame, filename, cid) < 0) {
         Py_DECREF(cid);
         Py_DECREF(filename);
         return -1;
+        }
     }
 
     Py_DECREF(cid);
@@ -178,10 +179,13 @@ static int handle_opcode_event(Tracer *self, PyFrameObject *frame, PyObject *fil
 
     PyObject *last_lasti = PyObject_GetAttrString(self->engine_thread_local, "last_lasti");
     PyObject *last_file_op = PyObject_GetAttrString(self->engine_thread_local, "last_file");
+    PyObject *last_code_id = PyObject_GetAttrString(self->engine_thread_local, "last_code_id");
 
-    if (last_lasti && last_file_op && last_lasti != Py_None && last_file_op != Py_None) {
-        int cmp = PyObject_RichCompareBool(last_file_op, filename, Py_EQ);
-        if (cmp == 1) {
+    if (last_lasti && last_file_op && last_code_id && 
+        last_lasti != Py_None && last_file_op != Py_None && last_code_id != Py_None) {
+        int cmp_file = PyObject_RichCompareBool(last_file_op, filename, Py_EQ);
+        int cmp_code = PyObject_RichCompareBool(last_code_id, co_firstlineno, Py_EQ);
+        if (cmp_file == 1 && cmp_code == 1) {
             PyObject *file_instr_dict = PyObject_GetItem(self->trace_data_instr_arcs, filename);
             if (file_instr_dict) {
                 PyObject *instr_set = PyObject_GetItem(file_instr_dict, cid);
