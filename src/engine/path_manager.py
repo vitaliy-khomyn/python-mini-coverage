@@ -43,7 +43,8 @@ class PathManager:
         for canonical, aliases in paths_config.items():
             for alias in aliases:
                 norm_alias = os.path.normcase(alias)
-                if path.startswith(norm_alias):
+                # verify directory boundary to prevent prefix collisions
+                if path == norm_alias or path.startswith(norm_alias + ('' if norm_alias.endswith(os.sep) else os.sep)):
                     return path.replace(norm_alias, canonical, 1)
         return path
 

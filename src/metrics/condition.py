@@ -64,6 +64,8 @@ class ConditionCoverage(CoverageMetric):
     def _add_lines(self, node: ast.AST) -> None:
         start = getattr(node, 'lineno', -1)
         end = getattr(node, 'end_lineno', start)
+        if end is None:
+            end = start
         if start > 0:
             self.valid_condition_lines.update(range(start, end + 1))
 

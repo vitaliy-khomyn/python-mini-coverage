@@ -156,13 +156,25 @@ static int handle_line_event(Tracer *self, PyFrameObject *frame, PyObject *filen
 
 static int handle_opcode_event(Tracer *self, PyFrameObject *frame, PyObject *filename, PyObject *cid) {
     // track instruction arcs: last_lasti -> current_lasti
+#if PY_VERSION_HEX >= 0x030B0000
     int current_lasti_int = PyFrame_GetLasti(frame);
+#else
+    int current_lasti_int = frame->f_lasti;
+#endif
     PyObject *current_lasti = PyLong_FromLong(current_lasti_int);
 
     // get code_id (co_firstlineno)
     PyObject *code = PyObject_GetAttrString((PyObject*)frame, "f_code");
+    if (!code) {
+        Py_DECREF(current_lasti);
+        return -1;
+    }
     PyObject *co_firstlineno = PyObject_GetAttrString(code, "co_firstlineno");
     Py_DECREF(code);
+    if (!co_firstlineno) {
+        Py_DECREF(current_lasti);
+        return -1;
+    }
 
     PyObject *last_lasti = PyObject_GetAttrString(self->engine_thread_local, "last_lasti");
     PyObject *last_file_op = PyObject_GetAttrString(self->engine_thread_local, "last_file");
@@ -235,14 +247,26 @@ Tracer_init(Tracer *self, PyObject *args, PyObject *kwds) {
     if (!trace_data) return -1;
 
     PyObject *key_lines = PyUnicode_FromString("lines");
+    if (!key_lines) {
+        Py_DECREF(trace_data);
+        return -1;
+    }
     self->trace_data_lines = PyObject_GetItem(trace_data, key_lines);
     Py_DECREF(key_lines);
 
     PyObject *key_arcs = PyUnicode_FromString("arcs");
+    if (!key_arcs) {
+        Py_DECREF(trace_data);
+        return -1;
+    }
     self->trace_data_arcs = PyObject_GetItem(trace_data, key_arcs);
     Py_DECREF(key_arcs);
 
     PyObject *key_instr = PyUnicode_FromString("instruction_arcs");
+    if (!key_instr) {
+        Py_DECREF(trace_data);
+        return -1;
+    }
     self->trace_data_instr_arcs = PyObject_GetItem(trace_data, key_instr);
     Py_DECREF(key_instr);
 

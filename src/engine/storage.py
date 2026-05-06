@@ -37,6 +37,7 @@ class CoverageStorage:
         cur.execute(queries.INIT_INSTRUCTION_ARCS)
 
         conn.commit()
+        cur.close()
         return conn
 
     def save(self, trace_data: Dict[str, Dict[Any, Any]], context_cache: Dict[str, int], map_path_func: Callable[[str], str] = lambda x: x) -> None:
@@ -83,6 +84,7 @@ class CoverageStorage:
             cur.executemany(queries.INSERT_INSTRUCTION_ARC, instr_data)
 
             conn.commit()
+            cur.close()
             conn.close()
 
             # Merge the partial file to the main database and delete it
@@ -115,6 +117,7 @@ class CoverageStorage:
 
             conn.commit()
             cur.execute(f"DETACH DATABASE {alias}")
+            cur.close()
             conn.close()
 
             # since this process created the partial file, there is no lock contention
@@ -161,6 +164,7 @@ class CoverageStorage:
             for file, code_id, start, end in cur.fetchall():
                 trace_data[TraceDataType.INSTRUCTION_ARCS][path_manager.canonicalize(file)][0].add((code_id, start, end))
 
+            cur.close()
             conn.close()
         except sqlite3.OperationalError as e:
             self.logger.debug(f"OperationalError loading {self.data_file}: {e}")
