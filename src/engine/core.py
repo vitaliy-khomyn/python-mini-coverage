@@ -348,8 +348,9 @@ class MiniCoverage:
         """
         norm_file = self.path_manager.canonicalize(filename)
         # ensure matching the directory boundary to avoid prefix collisions
-        if norm_file == self._lib_root or norm_file.startswith(self._lib_root + os.sep):
-            return False
+        if not os.environ.get("MINICOV_SELF_MEASURE"):
+            if norm_file == self._lib_root or norm_file.startswith(self._lib_root + os.sep):
+                return False
         return self.path_manager.should_trace(filename, self.excluded_files)
 
     def analyze(self) -> Dict[str, Dict[str, Any]]:

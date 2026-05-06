@@ -28,6 +28,9 @@ static int handle_call_or_return(Tracer *self, PyFrameObject *frame, int what) {
     return 0;
 }
 
+static int handle_line_event(Tracer *self, PyFrameObject *frame, PyObject *filename, PyObject *cid);
+static int handle_opcode_event(Tracer *self, PyFrameObject *frame, PyObject *filename, PyObject *cid);
+
 static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *arg) {
 
     if (what == PyTrace_CALL || what == PyTrace_RETURN)
