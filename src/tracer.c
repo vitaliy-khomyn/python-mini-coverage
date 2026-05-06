@@ -256,14 +256,32 @@ Tracer_init(Tracer *self, PyObject *args, PyObject *kwds) {
     return 0;
 }
 
+static int
+Tracer_traverse(Tracer *self, visitproc visit, void *arg) {
+    Py_VISIT(self->engine);
+    Py_VISIT(self->trace_data_lines);
+    Py_VISIT(self->trace_data_arcs);
+    Py_VISIT(self->trace_data_instr_arcs);
+    Py_VISIT(self->engine_thread_local);
+    Py_VISIT(self->cache_traceable);
+    return 0;
+}
+
+static int
+Tracer_clear(Tracer *self) {
+    Py_CLEAR(self->engine);
+    Py_CLEAR(self->trace_data_lines);
+    Py_CLEAR(self->trace_data_arcs);
+    Py_CLEAR(self->trace_data_instr_arcs);
+    Py_CLEAR(self->engine_thread_local);
+    Py_CLEAR(self->cache_traceable);
+    return 0;
+}
+
 static void
 Tracer_dealloc(Tracer *self) {
-    Py_XDECREF(self->engine);
-    Py_XDECREF(self->trace_data_lines);
-    Py_XDECREF(self->trace_data_arcs);
-    Py_XDECREF(self->trace_data_instr_arcs);
-    Py_XDECREF(self->engine_thread_local);
-    Py_XDECREF(self->cache_traceable);
+    PyObject_GC_UnTrack(self);
+    Tracer_clear(self);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -273,10 +291,12 @@ static PyTypeObject TracerType = {
     .tp_doc = "C-based Tracer for MiniCoverage",
     .tp_basicsize = sizeof(Tracer),
     .tp_itemsize = 0,
-    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
     .tp_new = PyType_GenericNew,
     .tp_init = (initproc)Tracer_init,
     .tp_dealloc = (destructor)Tracer_dealloc,
+    .tp_traverse = (traverseproc)Tracer_traverse,
+    .tp_clear = (inquiry)Tracer_clear,
     .tp_call = (ternaryfunc)Tracer_call,
 };
 
