@@ -5,7 +5,7 @@ The philosophy is simple: coverage tools should be invisible until needed, and w
 
 ## **Overview**
 
-At its core, MiniCoverage instruments Python code to track exactly which parts are executed during tests. Unlike simple tracers that only look at line numbers, MiniCoverage digs deeper into the Python bytecode. This enables verification that all boolean outcomes in complex logic were fully exercised and that the application behaves correctly even across multiple threads and processes.  
+At its core, MiniCoverage instruments Python code to track exactly which parts are executed during tests. Unlike simple tracers that only look at line numbers, MiniCoverage digs deeper into the Python bytecode and AST. This enables verification that all boolean outcomes in complex logic were fully exercised and that the application behaves correctly even across multiple threads and processes.  
 A hybrid approach to tracing is used. For maximum performance, the critical path of execution tracking is handled by a dedicated C extension. If that is not available, or if running on a newer Python version that supports it (3.12+), the tool automatically switches to the most efficient available method, such as sys.monitoring or a Python-based fallback.
 
 ## **Installation and Setup**
@@ -36,7 +36,7 @@ This executes the script exactly as Python would, but with instrumentation runni
 Once tests have been run, human-readable reports can be generated. The report command aggregates all the data collected so far (even from multiple runs) and produces both a console summary and detailed files:  
 python \-m src.main report
 
-This will output a text summary to the terminal and generate a static HTML website in the htmlcov directory. htmlcov/index.html can be opened in any browser to explore the source code with color-coded highlighting showing exactly which lines and branches were missed.  
+This will output a text summary to the terminal and generate a static HTML website in the htmlcov directory. Opening `htmlcov/index.html` in any browser lets you explore the source code with interactive, sortable tables and truth-table breakdowns showing exactly which lines, branches, and conditions were executed or missed.  
 
 You can specify output formats using the `--format` flag:
 ```commandline
@@ -60,6 +60,17 @@ omit =
 exclude_lines =  
     def __repr__  
     if __name__ == "__main__":
+metrics = 
+    stmt
+    branch
+    cond
+    mmcdc
+    func
+    class
+    loop
+    call
+    exc
+    ret
 ```
 **Using pyproject.toml:**
 ```.toml
