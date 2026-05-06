@@ -5,6 +5,8 @@ import threading
 import sqlite3
 import uuid  # noqa: F401
 from contextlib import closing
+from unittest.mock import MagicMock, patch
+import types
 from src.engine import MiniCoverage
 from src.engine import queries  # noqa: F401
 from tests.test_utils import BaseTestCase, MockFrame
@@ -28,6 +30,82 @@ class TestEngineCore(BaseTestCase):
         self.assertFalse(self.cov.path_manager.should_trace(outside, self.cov.excluded_files))
 
         self.assertFalse(self.cov.path_manager.should_trace(__file__, self.cov.excluded_files))
+
+    def test_monitor_py_start_negative(self):
+        """Test _monitor_py_start when file should NOT be traced."""
+        if sys.version_info < (3, 12):
+            self.skipTest("sys.monitoring only in 3.12+")
+
+        try:
+            sys.monitoring.set_events(sys.monitoring.COVERAGE_ID, 0)
+        except (AttributeError, Exception):
+            pass
+
+        code = MagicMock(spec=types.CodeType)
+        code.co_filename = "excluded.py"
+
+        with patch.object(self.cov.path_manager, 'should_trace', return_value=False):
+            with patch('sys.monitoring.set_local_events') as mock_set:
+                self.cov.sys_monitoring_tracer._monitor_py_start(code, 0)
+                mock_set.assert_any_call(sys.monitoring.COVERAGE_ID, code, 0)
+
+    def test_monitor_py_resume(self):
+        self.cov.thread_local.last_line = 10
+        self.cov.thread_local.last_lasti = 20
+        code = MagicMock(spec=types.CodeType)
+        self.cov.sys_monitoring_tracer._monitor_py_resume(code, 0)
+        self.assertIsNone(self.cov.thread_local.last_line)
+        self.assertIsNone(self.cov.thread_local.last_lasti)
+
+    def test_trace_function_clears_history(self):
+        frame = MagicMock()
+        frame.f_code.co_filename = "test.py"
+        self.cov.thread_local.last_line = 10
+        self.cov.thread_local.last_lasti = 20
+        self.cov.sys_settrace_tracer.trace_function(frame, "call", None)
+        self.assertIsNone(self.cov.thread_local.last_line)
+        self.assertIsNone(self.cov.thread_local.last_lasti)
+
+        self.cov.thread_local.last_line = 10
+        self.cov.sys_settrace_tracer.trace_function(frame, "return", None)
+        self.assertIsNone(self.cov.thread_local.last_line)
+
+    def test_trace_function_other_events(self):
+        frame = MagicMock()
+        res = self.cov.sys_settrace_tracer.trace_function(frame, "exception", None)
+        self.assertEqual(res, self.cov.sys_settrace_tracer.trace_function)
+
+    def test_start_sys_monitoring_failure_fallback(self):
+        if sys.version_info < (3, 12):
+            self.skipTest("sys.monitoring only available in 3.12+")
+        with patch('sys.monitoring.use_tool_id', side_effect=ValueError("Mock Failure")):
+            with patch('sys.settrace') as mock_settrace:
+                self.cov.start()
+                mock_settrace.assert_called()
+        self.cov.stop()
+
+    def test_stop_sys_monitoring_exception(self):
+        if sys.version_info < (3, 12):
+            self.skipTest("sys.monitoring only available in 3.12+")
+        with patch('sys.monitoring.set_events', side_effect=ValueError("Stop Error")):
+            self.cov.sys_monitoring_tracer.stop()
+
+    def test_patch_multiprocessing_idempotency(self):
+        self.cov._patch_multiprocessing()
+        import multiprocessing
+        self.assertTrue(hasattr(multiprocessing, '_mini_coverage_patched'))
+        self.cov._patch_multiprocessing()
+        self.assertTrue(hasattr(multiprocessing, '_mini_coverage_patched'))
+
+    def test_run_re_raises_exceptions(self):
+        with patch('builtins.open', unittest.mock.mock_open(read_data="raise ValueError('Test')")):
+            with self.assertRaises(ValueError):
+                self.cov.run("dummy_script.py")
+
+    def test_run_re_raises_system_exit(self):
+        with patch('builtins.open', unittest.mock.mock_open(read_data="import sys; sys.exit(1)")):
+            with self.assertRaises(SystemExit):
+                self.cov.run("dummy_script.py")
 
     def test_trace_function_line_capture(self):
         filename = os.path.join(self.test_dir, "test.py")

@@ -35,3 +35,28 @@ except TypeError:
     def test_no_excepts(self):
         code = "x = 1"
         self.assertEqual(self.get_excepts(code), set())
+
+    def test_ignored_except(self):
+        code = """
+try:
+    x = 1 / 0
+except ZeroDivisionError:
+    pass
+"""
+        self.assertEqual(self.get_excepts(code, ignored={4}), set())
+
+    def test_calculate_stats(self):
+        possible = {4, 6}
+        executed = {4}
+        stats = self.metric.calculate_stats(possible, executed)
+
+        self.assertEqual(stats['possible'], possible)
+        self.assertEqual(stats['executed'], {4})
+        self.assertEqual(stats['missing'], {6})
+        self.assertEqual(stats['pct'], 50.0)
+        self.assertEqual(stats['ratio'], "1/2")
+
+    def test_calculate_stats_empty(self):
+        stats = self.metric.calculate_stats(set(), set())
+        self.assertEqual(stats['pct'], 100.0)
+        self.assertEqual(stats['ratio'], "0/0")

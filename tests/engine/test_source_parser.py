@@ -80,3 +80,25 @@ class TestSourceParser(BaseTestCase):
         tree, _ = self.parser.parse_source(path)
         # should return None due to UnicodeDecodeError
         self.assertIsNone(tree)
+
+    def test_parse_os_error(self):
+        # Test that parse_source gracefully returns (None, set()) on file I/O errors
+        path = os.path.join(self.test_dir, "does_not_exist.py")
+        tree, ignored = self.parser.parse_source(path)
+        self.assertIsNone(tree)
+        self.assertEqual(len(ignored), 0)
+
+    def test_compile_os_error(self):
+        # Test that compile_source gracefully returns None on file I/O errors
+        path = os.path.join(self.test_dir, "does_not_exist.py")
+        co = self.parser.compile_source(path)
+        self.assertIsNone(co)
+
+    def test_source_parser_regex_error(self):
+        """Test SourceParser handles invalid regex patterns gracefully."""
+        path = self.create_file("dummy.py", "x = 1")
+
+        patterns = ["(unclosed group"]
+        with self.assertLogs('src.engine.source_parser', level='DEBUG') as cm:
+            self.parser.parse_source(path, exclude_patterns=patterns)
+            self.assertTrue(any("Invalid regex pattern" in o for o in cm.output))

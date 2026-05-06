@@ -66,3 +66,42 @@ class B:
         self.assertEqual(stats['missing'], {("B", 6, 8)})
         self.assertEqual(stats['pct'], 50.0)
         self.assertEqual(stats['ratio'], "1/2")
+
+    def test_dataclass_ignored(self):
+        # Currently, ClassCoverage requires an explicit __init__ in the AST body.
+        # @dataclass auto-generates __init__ at runtime, so it is bypassed by the static analyzer.
+        code = """
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+"""
+        classes = self.get_classes(code)
+        self.assertEqual(classes, set())
+
+    def test_class_with_new_only(self):
+        # Classes that only define __new__ and not __init__ are currently not tracked.
+        code = """
+class Singleton:
+    def __new__(cls):
+        return super().__new__(cls)
+"""
+        classes = self.get_classes(code)
+        self.assertEqual(classes, set())
+
+    def test_inherited_init(self):
+        # Classes that inherit __init__ do not have it in their AST body.
+        # Therefore, only the Parent class is tracked.
+        code = """
+class Parent:
+    def __init__(self):
+        self.a = 1
+
+class Child(Parent):
+    def method(self):
+        pass
+"""
+        classes = self.get_classes(code)
+        self.assertEqual(classes, {("Parent", 2, 4)})

@@ -36,3 +36,30 @@ obj.do_something()
         self.assertEqual(stats['missing'], {("func_b", 4)})
         self.assertEqual(stats['pct'], 50.0)
         self.assertEqual(stats['ratio'], "1/2")
+
+    def test_nested_call(self):
+        code = """
+foo(bar())
+"""
+        calls = self.get_calls(code)
+        self.assertEqual(calls, {("foo", 2), ("bar", 2)})
+
+    def test_anonymous_call(self):
+        code = """
+(lambda x: x)()
+"""
+        calls = self.get_calls(code)
+        self.assertEqual(calls, {("<callable>", 2)})
+
+    def test_ignored_call(self):
+        code = """
+my_func()
+other_func()
+"""
+        calls = self.get_calls(code, ignored={2})
+        self.assertEqual(calls, {("other_func", 3)})
+
+    def test_calculate_stats_empty(self):
+        stats = self.metric.calculate_stats(set(), set())
+        self.assertEqual(stats['pct'], 100.0)
+        self.assertEqual(stats['ratio'], "0/0")

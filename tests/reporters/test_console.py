@@ -54,3 +54,19 @@ class TestConsoleReporter(BaseTestCase):
         empty = {}
         with self.capture_stdout() as _:
             ConsoleReporter().generate(empty, self.test_dir)
+
+    def test_console_reporter_extended_metrics(self):
+        res = {
+            self.filepath: {
+                'Statement': {'pct': 50.0, 'missing': {2}, 'executed': {1}, 'possible': {1, 2}},
+                'MMC/DC': {'pct': 50.0, 'missing_outcomes': {1: {'ratio': '1/2', 'total': 2, 'covered': 1, 'missing': [{'vector': 'Condition 1 missed', 'terminal': True}]}}},
+                'Function': {'pct': 0.0, 'missing': {("my_func", 1, 2)}, 'executed': set(), 'possible': {("my_func", 1, 2)}}
+            }
+        }
+        reporter = ConsoleReporter()
+        with self.capture_stdout() as output:
+            reporter.generate(res, self.project_root)
+            text = output.getvalue()
+
+        self.assertIn("1 MMC/DC missed", text)
+        self.assertIn("1 funcs", text)

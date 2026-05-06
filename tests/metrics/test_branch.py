@@ -153,3 +153,48 @@ finally:
 """
         arcs = self.get_arcs(code)
         self.assertTrue({(3, 4), (6, 7)}.issubset(arcs))
+
+    def test_with_statement(self):
+        code = """
+with open('f') as f:
+    if x:
+        y = 1
+z = 2
+"""
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, {(3, 4), (3, 5)})
+
+    def test_async_with_statement(self):
+        code = """
+async def func():
+    async with lock:
+        if x:
+            y = 1
+    z = 2
+"""
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, {(4, 5), (4, 6)})
+
+    def test_try_except_else_finally_nested_ifs(self):
+        code = """
+try:
+    pass
+except:
+    if y:
+        b = 2
+else:
+    if z:
+        c = 3
+finally:
+    if w:
+        d = 4
+"""
+        arcs = self.get_arcs(code)
+        self.assertTrue({(5, 6), (8, 9), (11, 12)}.issubset(arcs))
+
+    def test_inline_if_expression_ignored(self):
+        # BranchCoverage operates on statement-level control flow,
+        # so inline expressions like IfExp are not tracked as branches here.
+        code = "x = 1 if y else 2"
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, set())

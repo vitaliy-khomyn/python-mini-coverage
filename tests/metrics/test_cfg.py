@@ -93,3 +93,47 @@ def foo():
         code = "while True: pass"
         cfg = self.build_cfg(code)
         self.assertGreater(len(cfg.successors), 0)
+
+    def test_cfg_raise_no_fallthrough(self):
+        code = """
+raise ValueError()
+x = 1
+"""
+        cfg = self.build_cfg(code)
+        # RAISE_VARARGS is an unconditional flow breaker. It should have 0 successors
+        # (unless there is an exception handler, which there isn't here).
+        self.assertEqual(len(cfg.successors[0]), 0)
+
+    def test_cfg_break_edge(self):
+        code = """
+for i in range(2):
+    break
+"""
+        cfg = self.build_cfg(code)
+        jumps = cfg.get_jumps()
+        # 'break' causes a forward jump out of the loop
+        has_forward_jump = any(src < tgt for src, tgt in jumps)
+        self.assertTrue(has_forward_jump, "Break should generate a forward jump edge")
+
+    def test_cfg_continue_edge(self):
+        code = """
+for i in range(2):
+    continue
+"""
+        cfg = self.build_cfg(code)
+        jumps = cfg.get_jumps()
+        # 'continue' causes a backward jump or an absolute jump to the loop header
+        self.assertGreater(len(jumps), 0, "Continue should generate at least one jump edge")
+
+    def test_cfg_yield_fallthrough(self):
+        code = """
+def gen():
+    yield 1
+    yield 2
+"""
+        co = self.compile_code(code)
+        gen_co = next(c for c in co.co_consts if isinstance(c, types.CodeType) and c.co_name == 'gen')
+        cfg = ControlFlowGraph(gen_co)
+        # YIELD_VALUE is not an unconditional flow breaker, so it shouldn't sever the CFG entirely.
+        # Depending on the Python version, it might create a block or just fall through.
+        self.assertGreaterEqual(len(cfg.blocks), 1)

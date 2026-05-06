@@ -53,3 +53,37 @@ class TestJsonReporter(BaseTestCase):
         JsonReporter(output_file="e.json").generate(empty, self.test_dir)
         with open("e.json") as f:
             self.assertEqual(json.load(f)["files"], {})
+
+    def test_json_reporter_extended_metrics(self):
+        res = {
+            self.filepath: {
+                'MMC/DC': {
+                    'pct': 50.0,
+                    'ratio': '1/2',
+                    'missing': [],
+                    'executed': [],
+                    'possible': [],
+                    'missing_outcomes': {2: {'ratio': '1/2', 'total': 2, 'covered': 1, 'missing': [{'vector': 'Condition 1 missed', 'terminal': True}]}}
+                },
+                'Function': {'pct': 100.0, 'ratio': '1/1', 'missing': set(), 'executed': {("my_func", 1, 2)}, 'possible': {("my_func", 1, 2)}}
+            }
+        }
+
+        out_file = os.path.join(self.test_dir, "coverage_ext.json")
+        reporter = JsonReporter(output_file=out_file)
+
+        with self.capture_stdout():
+            reporter.generate(res, self.project_root)
+
+        with open(out_file) as f:
+            data = json.load(f)
+
+        rel_name = os.path.relpath(self.filepath, self.project_root)
+        file_data = data["files"][rel_name]
+
+        self.assertIn("MMC/DC", file_data)
+        self.assertIn("missing_outcomes", file_data["MMC/DC"])
+        self.assertEqual(file_data["MMC/DC"]["missing_outcomes"]["2"]["ratio"], "1/2")
+
+        self.assertIn("Function", file_data)
+        self.assertEqual(file_data["Function"]["executed"], [["my_func", 1, 2]])
