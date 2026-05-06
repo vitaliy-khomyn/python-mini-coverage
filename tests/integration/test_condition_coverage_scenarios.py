@@ -122,11 +122,11 @@ partial_condition(True, False, False)
 
         self.assertLess(stats['pct'], 100.0, "Partial set should not have 100% coverage")
 
-        missing_map = metric.map_missing_arcs(func_code, stats['missing'])
+        missing_map = metric.map_missing_arcs(func_code, stats['missing'], executed_arcs)
 
         # Extract vectors from the detailed stats structure returned by map_missing_arcs
         missing_vectors = [m['vector'] for line_stats in missing_map.values() for m in line_stats.get('missing', [])]
-        self.assertTrue(any(v.startswith('False') for v in missing_vectors),
+        self.assertTrue(any(v[0] == 'False' for v in missing_vectors),
                       f"Should report missing 'False' outcome for condition 'a'. Got: {missing_map}")
 
     def test_condition_nested_function_signatures_ignored(self):

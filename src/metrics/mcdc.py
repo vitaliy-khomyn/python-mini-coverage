@@ -17,7 +17,7 @@ class MMCDCCoverage(ConditionCoverage):
         return "MMC/DC"
 
     def evaluate_mmcdc(self, code_obj: types.CodeType, executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
-        global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': []})
+        global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': [], 'executed': [], 'conditions': 0})
         if not code_obj:
             return {}
 
@@ -32,6 +32,8 @@ class MMCDCCoverage(ConditionCoverage):
             ratio = f"{covered}/{stats['total']}"
             result[lineno] = {
                 'missing': stats['missing'],
+                'executed': stats.get('executed', []),
+                'conditions': stats.get('conditions', 0),
                 'ratio': ratio,
                 'covered': covered,
                 'total': stats['total']
@@ -87,6 +89,8 @@ class MMCDCCoverage(ConditionCoverage):
 
             # 2. Check Masking MMC/DC pairs for each condition
             stats['missing'] = []
+            stats['executed'] = [{'vector': list(p), 'result': out} for p, out in executed_paths]
+            stats['conditions'] = len(ops)
             stats['total'] = len(ops)
 
             for i in range(len(ops)):
@@ -103,4 +107,4 @@ class MMCDCCoverage(ConditionCoverage):
                         break
 
                 if not pair_found:
-                    stats['missing'].append({'vector': f"Condition {i+1} independent effect not proven", 'terminal': True})
+                    stats['missing'].append({'message': f"Condition {i+1} independent effect not proven", 'terminal': True})

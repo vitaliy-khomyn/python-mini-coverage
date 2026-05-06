@@ -59,7 +59,7 @@ class TestConsoleReporter(BaseTestCase):
         res = {
             self.filepath: {
                 'Statement': {'pct': 50.0, 'missing': {2}, 'executed': {1}, 'possible': {1, 2}},
-                'MMC/DC': {'pct': 50.0, 'missing_outcomes': {1: {'ratio': '1/2', 'total': 2, 'covered': 1, 'missing': [{'vector': 'Condition 1 missed', 'terminal': True}]}}},
+                'MMC/DC': {'pct': 50.0, 'missing_outcomes': {1: {'ratio': '1/2', 'total': 2, 'covered': 1, 'conditions': 1, 'missing': [{'message': 'Condition 1 missed', 'terminal': True}]}}},
                 'Function': {'pct': 0.0, 'missing': {("my_func", 1, 2)}, 'executed': set(), 'possible': {("my_func", 1, 2)}}
             }
         }

@@ -63,8 +63,8 @@ class TestXmlReporter(BaseTestCase):
             self.filepath: {
                 'Statement': {'pct': 50.0, 'missing': {2}, 'executed': {1}, 'possible': {1, 2}},
                 'Function': {'pct': 100.0, 'missing': set(), 'executed': {("my_func", 1, 2)}, 'possible': {("my_func", 1, 2)}},
-                'Condition': {'pct': 50.0, 'missing_outcomes': {1: {'ratio': '1/2', 'total': 2, 'covered': 1, 'missing': [{'vector': 'Condition 1 missed', 'terminal': True}]}}},
-                'MMC/DC': {'pct': 50.0, 'missing_outcomes': {1: {'ratio': '1/2', 'total': 2, 'covered': 1, 'missing': [{'vector': 'Condition 1 missed', 'terminal': True}]}}}
+                'Condition': {'pct': 50.0, 'missing_outcomes': {1: {'ratio': '1/2', 'total': 2, 'covered': 1, 'conditions': 1, 'missing': [{'message': 'Condition 1 missed', 'terminal': True}]}}},
+                'MMC/DC': {'pct': 50.0, 'missing_outcomes': {1: {'ratio': '1/2', 'total': 2, 'covered': 1, 'conditions': 1, 'missing': [{'message': 'Condition 1 missed', 'terminal': True}]}}}
             }
         }
         out_file = os.path.join(self.test_dir, "coverage_ext.xml")

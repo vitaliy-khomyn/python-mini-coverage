@@ -11,7 +11,7 @@ def render_index(headers: List[str], total_stats: List[Dict[str, Any]], rows: st
             f'{stats["display"]}: <span class="{_get_css_class(stats["pct"])}">{stats["pct"]:.1f}% ({stats["ratio"]})</span>'
         )
     summary_html = " | ".join(summary_items)
-    header_html = "".join([f'<th class="numeric">{h}</th>' for h in headers])
+    header_html = "".join([f'<th class="numeric sortable" onclick="sortTable({i+1}, this)">{h} <span></span></th>' for i, h in enumerate(headers)])
     return f"""
 <!DOCTYPE html>
 <html>
@@ -25,6 +25,8 @@ def render_index(headers: List[str], total_stats: List[Dict[str, Any]], rows: st
         table {{ border-collapse: collapse; width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
         th, td {{ border: 1px solid #dee2e6; padding: 12px; text-align: left; }}
         th {{ background-color: #e9ecef; font-weight: 600; }}
+        th.sortable {{ cursor: pointer; user-select: none; }}
+        th.sortable:hover {{ background-color: #d1d8e0; }}
         tr:nth-child(even) {{ background-color: #f8f9fa; }}
         tr:hover {{ background-color: #f1f1f1; }}
         a {{ text-decoration: none; color: #007bff; }}
@@ -35,6 +37,58 @@ def render_index(headers: List[str], total_stats: List[Dict[str, Any]], rows: st
         .na {{ color: #adb5bd; font-style: italic; }}
         .numeric {{ text-align: right; font-family: monospace; }}
     </style>
+    <script>
+        let currentSortCol = -1;
+        let sortDirection = 0;
+        let originalRows = [];
+
+        document.addEventListener("DOMContentLoaded", () => {{
+            const tbody = document.querySelector("tbody");
+            originalRows = Array.from(tbody.querySelectorAll("tr"));
+        }});
+
+        function sortTable(colIndex, headerElement) {{
+            const tbody = document.querySelector("tbody");
+            let rows = Array.from(tbody.querySelectorAll("tr"));
+
+            if (currentSortCol === colIndex) {{
+                sortDirection = (sortDirection + 1) % 3;
+            }} else {{
+                currentSortCol = colIndex;
+                sortDirection = 1;
+            }}
+
+            document.querySelectorAll("th span").forEach(span => span.innerHTML = "");
+
+            if (sortDirection === 0) {{
+                tbody.innerHTML = "";
+                originalRows.forEach(row => tbody.appendChild(row));
+                currentSortCol = -1;
+                return;
+            }}
+
+            headerElement.querySelector("span").innerHTML = sortDirection === 1 ? " ▲" : " ▼";
+
+            rows.sort((a, b) => {{
+                let valA = a.cells[colIndex].innerText.trim();
+                let valB = b.cells[colIndex].innerText.trim();
+
+                if (colIndex === 0) {{
+                    return sortDirection === 1 ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                }} else {{
+                    let numA = parseFloat(valA);
+                    let numB = parseFloat(valB);
+                    if (isNaN(numA)) numA = -1;
+                    if (isNaN(numB)) numB = -1;
+
+                    return sortDirection === 1 ? numA - numB : numB - numA;
+                }}
+            }});
+
+            tbody.innerHTML = "";
+            rows.forEach(row => tbody.appendChild(row));
+        }}
+    </script>
 </head>
 <body>
     <h1>Coverage Report</h1>
@@ -44,7 +98,7 @@ def render_index(headers: List[str], total_stats: List[Dict[str, Any]], rows: st
     <table>
         <thead>
             <tr>
-                <th>File</th>
+                <th class="sortable" onclick="sortTable(0, this)">File <span></span></th>
                 {header_html}
             </tr>
         </thead>
@@ -117,7 +171,7 @@ def render_file(filename: str, code_html: str) -> str:
         .line.has-details {{ cursor: pointer; }}
         .condition-table {{ width: auto; border-collapse: collapse; font-size: 0.9em; margin-top: 5px; border: 1px solid #721c24; }}
         .condition-table th, .condition-table td {{ border: 1px solid #721c24; padding: 4px; text-align: left; }}
-        .condition-table th {{ background-color: #f5c6cb; }}
+        .condition-table th {{ background-color: #e9ecef; }}
         .line.open .annotation-details {{ display: block; }}
         .annotation-list {{ margin: 0; padding-left: 20px; }}
     </style>

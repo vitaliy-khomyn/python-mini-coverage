@@ -63,7 +63,7 @@ class TestJsonReporter(BaseTestCase):
                     'missing': [],
                     'executed': [],
                     'possible': [],
-                    'missing_outcomes': {2: {'ratio': '1/2', 'total': 2, 'covered': 1, 'missing': [{'vector': 'Condition 1 missed', 'terminal': True}]}}
+                    'missing_outcomes': {2: {'ratio': '1/2', 'total': 2, 'covered': 1, 'conditions': 1, 'missing': [{'message': 'Condition 1 missed', 'terminal': True}]}}
                 },
                 'Function': {'pct': 100.0, 'ratio': '1/1', 'missing': set(), 'executed': {("my_func", 1, 2)}, 'possible': {("my_func", 1, 2)}}
             }

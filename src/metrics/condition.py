@@ -143,20 +143,20 @@ class ConditionCoverage(CoverageMetric):
             if isinstance(const, types.CodeType):
                 self._analyze_boolean_jumps(const, arcs)
 
-    def map_missing_arcs(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
+    def map_missing_arcs(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
         """
         Map missing bytecode arcs to source line numbers with human-readable labels.
         Returns: {lineno: {'missing': [{'vector': '...', 'terminal': bool}], 'ratio': '3/4'}}
         """
         # Accumulate stats per line across all code objects (handling lambdas etc)
-        # Structure: lineno -> {'total': int, 'missing': [str]}
-        global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': []})
+        # Structure: lineno -> {'total': int, 'missing': [], 'executed': [], 'conditions': int}
+        global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': [], 'executed': [], 'conditions': 0})
 
         if not code_obj:
             return {}
 
         self._collect_line_ops(code_obj, global_line_stats)
-        self._analyze_line_ops(global_line_stats, missing_arcs)
+        self._analyze_line_ops(global_line_stats, missing_arcs, executed_arcs)
 
         # Format the result
         result = {}
@@ -166,6 +166,8 @@ class ConditionCoverage(CoverageMetric):
             ratio = f"{covered}/{stats['total']}"
             result[lineno] = {
                 'missing': clean_missing,
+                'executed': stats.get('executed', []),
+                'conditions': stats.get('conditions', 0),
                 'ratio': ratio,
                 'covered': covered,
                 'total': stats['total']
@@ -211,11 +213,53 @@ class ConditionCoverage(CoverageMetric):
             line_stats[lineno].setdefault('total', 0)
             line_stats[lineno]['total'] += len(ops) + 1
 
-    def _analyze_line_ops(self, global_line_stats: Dict[int, Any], missing_arcs: Set[Tuple[int, int, int]]) -> None:
-        """Analyze grouped line operations to construct and identify missing boolean vectors."""
+    def _analyze_line_ops(self, global_line_stats: Dict[int, Any], missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> None:
+        """Analyze grouped line operations to construct and identify missing and executed boolean vectors."""
         for lineno, stats in global_line_stats.items():
             ops = stats.get('ops', [])
             stats['missing'] = []
+            stats['executed'] = []
+            stats['conditions'] = len(ops)
+
+            # Reconstruct executed paths
+            executed_paths = set()
+            stack = [(0, tuple(["-"] * len(ops)))]
+            visited = set()
+
+            while stack:
+                op_idx, vec = stack.pop()
+                if (op_idx, vec) in visited:
+                    continue
+                visited.add((op_idx, vec))
+
+                if op_idx >= len(ops):
+                    continue
+
+                op_data = ops[op_idx]
+                instr, code_id = op_data['instr'], op_data['code_id']
+                target = int(instr.argval)
+                jump_val, fall_val = self._get_branch_labels(instr.opname)
+
+                if (code_id, instr.offset, target) in executed_arcs:
+                    new_vec = list(vec)
+                    new_vec[op_idx] = jump_val
+                    next_idx = next((k for k in range(op_idx + 1, len(ops)) if ops[k]['instr'].offset >= target), None)
+                    if next_idx is not None:
+                        stack.append((next_idx, tuple(new_vec)))
+                    else:
+                        executed_paths.add((tuple(new_vec), jump_val))
+
+                next_offset = op_data['next_offset']
+                if next_offset is not None and (code_id, instr.offset, next_offset) in executed_arcs:
+                    new_vec = list(vec)
+                    new_vec[op_idx] = fall_val
+                    if op_idx == len(ops) - 1:
+                        executed_paths.add((tuple(new_vec), fall_val))
+                    else:
+                        stack.append((op_idx + 1, tuple(new_vec)))
+
+            for p, out in executed_paths:
+                stats['executed'].append({'vector': list(p), 'result': out})
 
             for i, op_data in enumerate(ops):
                 instr, next_offset, code_id = op_data['instr'], op_data['next_offset'], op_data['code_id']
@@ -228,12 +272,12 @@ class ConditionCoverage(CoverageMetric):
                 target = int(instr.argval)
                 if (code_id, instr.offset, target) in missing_arcs:
                     vector = prefix + [jump_val] + ["-"] * suffix_len
-                    stats['missing'].append({'vector': vector, 'terminal': True})
+                    stats['missing'].append({'vector': vector, 'result': jump_val, 'terminal': True})
 
                 # Check Fallthrough Arc (Continue path)
                 if next_offset is not None and (code_id, instr.offset, next_offset) in missing_arcs:
-                    vector = prefix + [fall_val] + ["..."] * suffix_len
-                    stats['missing'].append({'vector': vector, 'terminal': (i == len(ops) - 1)})
+                    vector = prefix + [fall_val] + ["?"] * suffix_len
+                    stats['missing'].append({'vector': vector, 'result': '?', 'terminal': (i == len(ops) - 1)})
 
     def _filter_redundant_vectors(self, raw_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Filter out intermediate missing vectors that are covered by more specific ones."""
@@ -246,7 +290,7 @@ class ConditionCoverage(CoverageMetric):
                 continue
             vec_a = item_a['vector']
             try:
-                stop_idx = vec_a.index("...")
+                stop_idx = vec_a.index("?")
                 prefix_a = vec_a[:stop_idx]
             except ValueError:
                 prefix_a = vec_a
@@ -260,6 +304,6 @@ class ConditionCoverage(CoverageMetric):
                     break
 
         return [
-            {'vector': ", ".join(item['vector']), 'terminal': item['terminal']}
+            {'vector': [v if v != "?" else "-" for v in item['vector']], 'result': item['result'], 'terminal': item['terminal']}
             for i, item in enumerate(raw_items) if i not in indices_to_remove
         ]

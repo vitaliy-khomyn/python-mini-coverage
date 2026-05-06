@@ -89,7 +89,7 @@ class Analyzer:
                 stats = metric.calculate_stats(possible, executed)
 
                 if metric.get_name() == "Condition" and hasattr(metric, 'map_missing_arcs'):
-                    stats['missing_outcomes'] = metric.map_missing_arcs(code_obj, stats['missing'])
+                    stats['missing_outcomes'] = metric.map_missing_arcs(code_obj, stats['missing'], executed)
                 elif metric.get_name() == "MMC/DC" and hasattr(metric, 'evaluate_mmcdc'):
                     stats['missing_outcomes'] = metric.evaluate_mmcdc(code_obj, executed)
 

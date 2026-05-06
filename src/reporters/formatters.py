@@ -60,9 +60,32 @@ class ConditionFormatter(BaseFormatter):
         missing_outcomes = stats.get('missing_outcomes', {})
         for lineno, cond_info in missing_outcomes.items():
             if isinstance(cond_info, dict) and 'ratio' in cond_info and cond_info.get('missing'):
-                rows = "".join([f"<tr><td>{html.escape(item.get('vector', str(item)))}</td></tr>" for item in cond_info['missing']])
+                conditions_count = cond_info.get('conditions', 0)
+                if conditions_count == 0:
+                    continue
+
+                header_cols = "".join([f"<th>Cond {i+1}</th>" for i in range(conditions_count)])
+                header_cols += "<th>Result</th>"
+                header_row = f"<tr>{header_cols}</tr>"
+
+                rows = [header_row]
+
+                for item in cond_info.get('executed', []):
+                    vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
+                    result_html = f"<td>{html.escape(str(item['result']))}</td>"
+                    rows.append(f"<tr class='hit'>{vector_html}{result_html}</tr>")
+
+                for item in cond_info.get('missing', []):
+                    if 'message' in item:
+                        rows.append(f"<tr class='miss'><td colspan='{conditions_count + 1}'>{html.escape(item['message'])}</td></tr>")
+                    else:
+                        vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
+                        result_html = f"<td>{html.escape(str(item.get('result', '-')))}</td>"
+                        rows.append(f"<tr class='miss'>{vector_html}{result_html}</tr>")
+
+                table_rows = "".join(rows)
                 table = f"<strong>Condition Coverage: {cond_info['ratio']}</strong>" \
-                        f"<table class='condition-table'><tbody>{rows}</tbody></table>"
+                        f"<table class='condition-table'><tbody>{table_rows}</tbody></table>"
                 annotations[lineno].append(table)
         return dict(annotations)
 

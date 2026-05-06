@@ -69,7 +69,7 @@ class TestHtmlReporter(BaseTestCase):
             self.filepath: {
                 'Statement': {'pct': 50.0, 'missing': {2}, 'executed': {1}, 'possible': {1, 2}},
                 'Branch': {'pct': 0.0, 'missing': {(2, 3)}, 'executed': set(), 'possible': {(2, 3)}},
-                'MMC/DC': {'pct': 50.0, 'missing_outcomes': {2: {'ratio': '1/2', 'total': 2, 'covered': 1, 'missing': [{'vector': 'Condition 1 missed', 'terminal': True}]}}},
+                'MMC/DC': {'pct': 50.0, 'missing_outcomes': {2: {'ratio': '1/2', 'total': 2, 'covered': 1, 'conditions': 1, 'missing': [{'message': 'Condition 1 missed', 'terminal': True}]}}},
                 'Return': {'pct': 0.0, 'missing': {2}, 'executed': set(), 'possible': {2}}
             }
         }
