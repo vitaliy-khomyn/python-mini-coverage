@@ -37,16 +37,14 @@ class TestStorage(unittest.TestCase):
             with patch('sqlite3.connect', side_effect=Exception("Boom")):
                 with self.assertLogs('src.engine.storage', level='ERROR') as cm:
                     self.cov.storage.combine(lambda x: x)
-                    self.assertTrue(any("Error combining" in o for o in cm.output))
+                    self.assertTrue(any("Error merging" in o for o in cm.output))
 
-    def test_storage_combine_os_remove_retry(self):
+    def test_storage_combine_os_remove_error(self):
         with patch('glob.glob', return_value=['partial.db']):
             with patch('sqlite3.connect'):
-                with patch('os.remove', side_effect=[OSError("Busy"), OSError("Busy"), None]) as mock_remove:
-                    with patch('time.sleep') as mock_sleep:
-                        self.cov.storage.combine(lambda x: x)
-                        self.assertEqual(mock_remove.call_count, 3)
-                        self.assertEqual(mock_sleep.call_count, 2)
+                with patch('os.remove', side_effect=OSError("Busy")) as mock_remove:
+                    self.cov.storage.combine(lambda x: x)
+                    self.assertEqual(mock_remove.call_count, 1)
 
     def test_load_into_missing_file(self):
         self.cov.storage.data_file = "non_existent.db"

@@ -244,7 +244,7 @@ class MiniCoverage:
         """
         Dump the in-memory coverage data to a unique SQLite file via Storage Manager.
         """
-        self.storage.save(self.trace_data, self.context_cache)
+        self.storage.save(self.trace_data, self.context_cache, self.path_manager.map_path)
 
     def combine_data(self) -> None:
         """

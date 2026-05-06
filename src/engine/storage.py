@@ -1,10 +1,11 @@
+import glob
+import logging
 import os
 import sqlite3
-import logging
-import glob
 import uuid
-import time
+
 from typing import Dict, Any, Callable
+
 from . import queries
 from .trace_data import TraceDataType
 
@@ -22,11 +23,11 @@ class CoverageStorage:
         self.pid = os.getpid()
         self.uuid = uuid.uuid4().hex[:6]
 
-    def _init_db(self, db_path: str) -> sqlite3.Connection:
+    def _init_db(self, db_path: str, timeout: float = 15.0) -> sqlite3.Connection:
         """
         Initialize the SQLite database schema.
         """
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=timeout)
         cur = conn.cursor()
 
         cur.execute(queries.INIT_CONTEXTS)
@@ -38,7 +39,7 @@ class CoverageStorage:
         conn.commit()
         return conn
 
-    def save(self, trace_data: Dict[str, Dict[Any, Any]], context_cache: Dict[str, int]) -> None:
+    def save(self, trace_data: Dict[str, Dict[Any, Any]], context_cache: Dict[str, int], map_path_func: Callable[[str], str] = lambda x: x) -> None:
         """
         Dump in-memory coverage data to a unique SQLite file.
         """
@@ -83,59 +84,58 @@ class CoverageStorage:
 
             conn.commit()
             conn.close()
+
+            # Merge the partial file to the main database and delete it
+            self._merge_partial(filename, map_path_func)
+
         except Exception as e:
             self.logger.error(f"Failed to save coverage data to DB: {e}")
 
+    def _merge_partial(self, partial_filename: str, map_path_func: Callable[[str], str]) -> None:
+        try:
+            # use a timeout to handle concurrent writes to the main DB from multiple processes
+            conn = self._init_db(self.data_file, timeout=15.0)
+            conn.create_function("remap_path", 1, map_path_func)
+            cur = conn.cursor()
+
+            alias = f"partial_{uuid.uuid4().hex}"
+            cur.execute(f"ATTACH DATABASE ? AS {alias}", (partial_filename,))
+
+            # copy new contexts from partial, ignoring existing labels
+            cur.execute(queries.MERGE_CONTEXTS.format(alias=alias))
+
+            # merge lines (re-mapping IDs via join on label)
+            cur.execute(queries.MERGE_LINES.format(alias=alias))
+
+            # merge arcs
+            cur.execute(queries.MERGE_ARCS.format(alias=alias))
+
+            # merge instruction arcs
+            cur.execute(queries.MERGE_INSTRUCTION_ARCS.format(alias=alias))
+
+            conn.commit()
+            cur.execute(f"DETACH DATABASE {alias}")
+            conn.close()
+
+            # since this process created the partial file, there is no lock contention
+            try:
+                os.remove(partial_filename)
+            except OSError:
+                pass
+        except sqlite3.OperationalError as e:
+            self.logger.debug(f"Skipping locked/corrupt partial file {partial_filename}: {e}")
+        except Exception as e:
+            self.logger.error(f"Error merging {partial_filename}: {e}")
+
     def combine(self, map_path_func: Callable[[str], str]) -> None:
         """
-        Merge all partial coverage database files into the main database.
+        Merge all leftover partial coverage database files into the main database.
+        Most files should already be merged by the child processes themselves.
         """
-        try:
-            conn = self._init_db(self.data_file)
-        except Exception as e:
-            self.logger.error(f"Error combining main database {self.data_file}: {e}")
-            return
-
-        # register the path mapping function for use in SQL queries
-        conn.create_function("remap_path", 1, map_path_func)
-        cur = conn.cursor()
-
         pattern = f"{self.data_file}.*.*"
 
         for filename in glob.glob(pattern):
-            try:
-                alias = f"partial_{uuid.uuid4().hex}"
-                cur.execute(f"ATTACH DATABASE ? AS {alias}", (filename,))
-
-                # copy new contexts from partial, ignoring existing labels
-                cur.execute(queries.MERGE_CONTEXTS.format(alias=alias))
-
-                # merge lines (re-mapping IDs via join on label)
-                cur.execute(queries.MERGE_LINES.format(alias=alias))
-
-                # merge arcs
-                cur.execute(queries.MERGE_ARCS.format(alias=alias))
-
-                # merge instruction arcs
-                cur.execute(queries.MERGE_INSTRUCTION_ARCS.format(alias=alias))
-
-                conn.commit()
-                cur.execute(f"DETACH DATABASE {alias}")
-
-                # retry loop for deletion to handle Windows file locking
-                for _ in range(5):
-                    try:
-                        os.remove(filename)
-                        break
-                    except OSError:
-                        time.sleep(0.1)
-            except sqlite3.OperationalError as e:
-                # happens if file is locked or corrupt
-                self.logger.debug(f"Skipping locked/corrupt partial file {filename}: {e}")
-            except Exception as e:
-                self.logger.error(f"Error combining {filename}: {e}")
-
-        conn.close()
+            self._merge_partial(filename, map_path_func)
 
     def load_into(self, trace_data: Dict[str, Dict[Any, Any]], path_manager) -> None:
         """
