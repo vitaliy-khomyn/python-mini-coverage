@@ -44,7 +44,10 @@ class TraceState(threading.local):
         self.last_code_id: Optional[int] = None
 
 
-class CoverageProcessMixin:
+class CoverageProcess(_OriginalProcess):
+    # class-level config to support pickling (set by _patch_multiprocessing)
+    _subprocess_setup = {"project_root": None, "config_file": None}
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # prefer thread-local config if available (handles concurrent starts)
@@ -52,11 +55,11 @@ class CoverageProcessMixin:
             self._cov_project_root = _config_local.project_root
             self._cov_config_file = _config_local.config_file
         else:
-            self._cov_project_root = getattr(self.__class__, "_subprocess_setup", {}).get("project_root")
-            self._cov_config_file = getattr(self.__class__, "_subprocess_setup", {}).get("config_file")
+            self._cov_project_root = self._subprocess_setup["project_root"]
+            self._cov_config_file = self._subprocess_setup["config_file"]
 
     def run(self) -> None:
-        if getattr(self, '_cov_project_root', None):
+        if self._cov_project_root:
             cov = MiniCoverage(project_root=self._cov_project_root, config_file=self._cov_config_file)
             cov.start()
             try:
@@ -65,47 +68,6 @@ class CoverageProcessMixin:
                 cov.stop()
         else:
             super().run()
-
-
-class CoverageProcess(CoverageProcessMixin, _OriginalProcess):
-    _subprocess_setup = {"project_root": None, "config_file": None}
-
-
-_spawn_ctx = None
-try:
-    _spawn_ctx = multiprocessing.get_context('spawn')
-except Exception:
-    pass
-
-if _spawn_ctx:
-    class CoverageSpawnProcess(CoverageProcessMixin, _spawn_ctx.Process):
-        _subprocess_setup = {"project_root": None, "config_file": None}
-else:
-    CoverageSpawnProcess = None  # type: ignore
-
-_fork_ctx = None
-try:
-    _fork_ctx = multiprocessing.get_context('fork')
-except Exception:
-    pass
-
-if _fork_ctx:
-    class CoverageForkProcess(CoverageProcessMixin, _fork_ctx.Process):
-        _subprocess_setup = {"project_root": None, "config_file": None}
-else:
-    CoverageForkProcess = None  # type: ignore
-
-_forkserver_ctx = None
-try:
-    _forkserver_ctx = multiprocessing.get_context('forkserver')
-except Exception:
-    pass
-
-if _forkserver_ctx:
-    class CoverageForkServerProcess(CoverageProcessMixin, _forkserver_ctx.Process):
-        _subprocess_setup = {"project_root": None, "config_file": None}
-else:
-    CoverageForkServerProcess = None  # type: ignore
 
 
 class MiniCoverage:
@@ -304,33 +266,14 @@ class MiniCoverage:
         Ensures that child processes initialize their own coverage engine,
         collect data, and save it to disk upon exit.
         """
-        if hasattr(multiprocessing, '_mini_coverage_patched'):
-            return
-
         # update global config for new processes
         CoverageProcess._subprocess_setup["project_root"] = self.project_root
         CoverageProcess._subprocess_setup["config_file"] = self.config_file
 
+        if hasattr(multiprocessing, '_mini_coverage_patched'):
+            return
+
         multiprocessing.Process = CoverageProcess
-        
-        try:
-            if CoverageSpawnProcess:
-                CoverageSpawnProcess._subprocess_setup["project_root"] = self.project_root
-                CoverageSpawnProcess._subprocess_setup["config_file"] = self.config_file
-                multiprocessing.get_context('spawn').Process = CoverageSpawnProcess
-
-            if CoverageForkProcess:
-                CoverageForkProcess._subprocess_setup["project_root"] = self.project_root
-                CoverageForkProcess._subprocess_setup["config_file"] = self.config_file
-                multiprocessing.get_context('fork').Process = CoverageForkProcess
-
-            if CoverageForkServerProcess:
-                CoverageForkServerProcess._subprocess_setup["project_root"] = self.project_root
-                CoverageForkServerProcess._subprocess_setup["config_file"] = self.config_file
-                multiprocessing.get_context('forkserver').Process = CoverageForkServerProcess
-        except Exception:
-            pass
-
         multiprocessing._mini_coverage_patched = True  # type: ignore
 
     def start(self) -> None:

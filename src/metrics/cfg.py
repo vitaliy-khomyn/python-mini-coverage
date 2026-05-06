@@ -55,7 +55,7 @@ class ControlFlowGraph:
         if sys.version_info >= (3, 11) and hasattr(self.code, 'co_exceptiontable'):
             try:
                 # dis.parse_exception_table returns (start, end, target, depth, lasti)
-                for _, _, target, _, _ in dis._parse_exception_table(self.code):  # type: ignore
+                for _, _, target, _, _ in dis.parse_exception_table(self.code):  # type: ignore
                     leaders.add(target)
             except Exception:
                 pass
@@ -98,10 +98,7 @@ class ControlFlowGraph:
                 'JUMP_BACKWARD_NO_INTERRUPT',
                 'RETURN_VALUE',
                 'RAISE_VARARGS',
-                'RETURN_CONST',
-                'BREAK_LOOP',
-                'CONTINUE_LOOP',
-                'RERAISE'
+                'RETURN_CONST'
             )
             # conditional jumps (POP_JUMP_IF_FALSE etc) also fall through
             if not is_unconditional:
