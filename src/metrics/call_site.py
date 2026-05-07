@@ -39,27 +39,7 @@ class CallSiteCoverage(CoverageMetric):
         Calculates coverage stats for call sites.
         'executed_elements' for this metric is the set of executed line numbers.
         """
-        if not possible_elements:
-            return {
-                'pct': 100.0, 'missing': set(), 'executed': set(),
-                'possible': set(), 'ratio': "0/0"
-            }
-
-        covered_elements = {
-            call for call in possible_elements if call[1] in executed_elements
-        }
-        missing_elements = possible_elements - covered_elements
-
-        pct = (len(covered_elements) / len(possible_elements)) * 100 if possible_elements else 100.0
-        ratio = f"{len(covered_elements)}/{len(possible_elements)}"
-
-        return {
-            'pct': pct,
-            'missing': missing_elements,
-            'executed': covered_elements,
-            'possible': possible_elements,
-            'ratio': ratio
-        }
+        return super().calculate_stats(possible_elements, executed_elements, key=lambda c: c[1])
 
 
 class CallSiteVisitor(BaseVisitor):

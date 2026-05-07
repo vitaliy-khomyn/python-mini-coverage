@@ -41,27 +41,7 @@ class ClassCoverage(CoverageMetric):
         'executed_elements' for this metric is the set of executed line numbers.
         A class is covered if the first line of its __init__ is executed.
         """
-        if not possible_elements:
-            return {
-                'pct': 100.0, 'missing': set(), 'executed': set(),
-                'possible': set(), 'ratio': "0/0"
-            }
-
-        covered_elements = {
-            cls for cls in possible_elements if cls[2] in executed_elements
-        }
-        missing_elements = possible_elements - covered_elements
-
-        pct = (len(covered_elements) / len(possible_elements)) * 100 if possible_elements else 100.0
-        ratio = f"{len(covered_elements)}/{len(possible_elements)}"
-
-        return {
-            'pct': pct,
-            'missing': missing_elements,
-            'executed': covered_elements,
-            'possible': possible_elements,
-            'ratio': ratio
-        }
+        return super().calculate_stats(possible_elements, executed_elements, key=lambda c: c[2])
 
 
 class ClassVisitor(BaseVisitor):

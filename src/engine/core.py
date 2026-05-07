@@ -169,40 +169,18 @@ class MiniCoverage:
         """
         Erase previously collected coverage data and reports.
         """
-        # delete the data file (e.g. .coveragedb)
-        if self.config.data_file and os.path.exists(self.config.data_file):
-            try:
-                os.remove(self.config.data_file)
-                self.logger.info(f"Erased old coverage data: {self.config.data_file}")
-            except OSError as e:
-                self.logger.warning(f"Failed to erase data file: {e}")
+        def _safe_erase(path: str, is_dir: bool, desc: str) -> None:
+            if path and os.path.exists(path):
+                try:
+                    shutil.rmtree(path) if is_dir else os.remove(path)
+                    self.logger.info(f"Erased old {desc}: {path}")
+                except OSError as e:
+                    self.logger.warning(f"Failed to erase {desc}: {e}")
 
-        # delete the HTML report directory (default: htmlcov)
-        html_dir = os.path.join(self.project_root, "htmlcov")
-        if os.path.exists(html_dir):
-            try:
-                shutil.rmtree(html_dir)
-                self.logger.info(f"Erased old HTML report directory: {html_dir}")
-            except OSError as e:
-                self.logger.warning(f"Failed to erase HTML report directory: {e}")
-
-        # delete XML report (default: coverage.xml)
-        xml_file = os.path.join(self.project_root, "coverage.xml")
-        if os.path.exists(xml_file):
-            try:
-                os.remove(xml_file)
-                self.logger.info(f"Erased old XML report: {xml_file}")
-            except OSError as e:
-                self.logger.warning(f"Failed to erase XML report: {e}")
-
-        # delete JSON report (default: coverage.json)
-        json_file = os.path.join(self.project_root, "coverage.json")
-        if os.path.exists(json_file):
-            try:
-                os.remove(json_file)
-                self.logger.info(f"Erased old JSON report: {json_file}")
-            except OSError as e:
-                self.logger.warning(f"Failed to erase JSON report: {e}")
+        _safe_erase(self.config.data_file, False, "coverage data")
+        _safe_erase(os.path.join(self.project_root, "htmlcov"), True, "HTML report directory")
+        _safe_erase(os.path.join(self.project_root, "coverage.xml"), False, "XML report")
+        _safe_erase(os.path.join(self.project_root, "coverage.json"), False, "JSON report")
 
     def switch_context(self, context_label: str) -> None:
         """
