@@ -42,6 +42,10 @@ class ConditionCoverage(CoverageMetric):
         'NOT_TAKEN'        # Pseudo-instruction in some 3.12+ dis outputs
     }
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.valid_condition_lines: Optional[Set[int]] = None
+
     def get_name(self) -> str:
         return "Condition"
 
@@ -126,7 +130,7 @@ class ConditionCoverage(CoverageMetric):
                 if not lineno:
                     continue
 
-                if hasattr(self, 'valid_condition_lines') and lineno not in self.valid_condition_lines:
+                if self.valid_condition_lines is not None and lineno not in self.valid_condition_lines:
                     continue
 
                 # 1. target arc (Jump Taken)
@@ -198,7 +202,7 @@ class ConditionCoverage(CoverageMetric):
                     lineno = current_line
 
                 if lineno and lineno > 0:
-                    if hasattr(self, 'valid_condition_lines') and lineno not in self.valid_condition_lines:
+                    if self.valid_condition_lines is not None and lineno not in self.valid_condition_lines:
                         continue
 
                     line_ops[lineno].append({
@@ -256,3 +260,35 @@ class ConditionCoverage(CoverageMetric):
             {'vector': [v if v != "?" else "-" for v in item['vector']], 'result': item['result'], 'terminal': item['terminal']}
             for i, item in enumerate(raw_items) if i not in indices_to_remove
         ]
+
+    def _evaluate_outcomes(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
+        return self.map_missing_arcs(code_obj, missing_arcs, executed_arcs)
+
+    def post_process(self, stats: Dict[str, Any], static_source: Any, executed_data: Set[Any]) -> None:
+        """
+        Hook called after calculate_stats to refine global statistics based on
+        actual conditions rather than raw bytecode arcs.
+        """
+        code_obj = static_source
+        if not code_obj or not isinstance(code_obj, types.CodeType):
+            return
+
+        stats['missing_outcomes'] = self._evaluate_outcomes(code_obj, stats['missing'], executed_data)
+
+        total_conditions = 0
+        missing_conditions = []
+        for lineno, outcome in stats['missing_outcomes'].items():
+            total_conditions += outcome.get('total', 0)
+            for m in outcome.get('missing', []):
+                msg = m.get('message')
+                if not msg:
+                    vec_str = ", ".join(m.get('vector', []))
+                    res = m.get('result', '?')
+                    msg = f"Vector ({vec_str}) -> {res}"
+                missing_conditions.append(f"Line {lineno}: {msg}")
+
+        stats['total'] = total_conditions
+        stats['missing'] = missing_conditions
+        stats['covered'] = total_conditions - len(missing_conditions)
+        stats['pct'] = round((stats['covered'] / total_conditions) * 100, 2) if total_conditions > 0 else 100.0
+        stats['ratio'] = f"{stats['covered']}/{total_conditions}"

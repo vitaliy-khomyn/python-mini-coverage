@@ -1,3 +1,5 @@
+import ast
+
 from abc import ABC
 from enum import Enum
 from typing import Set, Dict, Any, Callable, Optional
@@ -32,6 +34,14 @@ class CoverageMetric(ABC):
         """
         # Default for Statement and Function coverage
         return TraceDataType.LINES
+
+    def set_ast(self, ast_tree: ast.AST) -> None:
+        """
+        Provide the AST to the metric.
+        Useful for metrics that primarily analyze Code Objects but still need
+        AST context for filtering (like Condition Coverage).
+        """
+        pass
 
     def get_possible_elements(self, source: Any, ignored_lines: Set[int]) -> Set[Any]:
         """
@@ -82,3 +92,14 @@ class CoverageMetric(ABC):
             'possible': possible_elements,
             'ratio': ratio
         }
+
+    def post_process(self, stats: Dict[str, Any], static_source: Any, executed_data: Set[Any]) -> None:
+        """
+        Optional hook called after calculate_stats to refine global statistics.
+
+        Args:
+            stats (dict): The statistics dictionary calculated by calculate_stats.
+            static_source (Any): The static source (AST or Code Object).
+            executed_data (set): The collected dynamic data.
+        """
+        pass

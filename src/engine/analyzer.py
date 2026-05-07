@@ -80,8 +80,7 @@ class Analyzer:
 
             file_results = {}
             for metric in self.metrics:
-                if metric.get_name() in ("Condition", "MMC/DC") and hasattr(metric, 'set_ast'):
-                    metric.set_ast(ast_tree)
+                metric.set_ast(ast_tree)
 
                 static_source_type = metric.get_required_static_source()
                 dynamic_data_key = metric.get_required_dynamic_data()
@@ -94,10 +93,7 @@ class Analyzer:
 
                 stats = metric.calculate_stats(possible, executed)
 
-                if metric.get_name() == "Condition" and hasattr(metric, 'map_missing_arcs'):
-                    stats['missing_outcomes'] = metric.map_missing_arcs(code_obj, stats['missing'], executed)
-                elif metric.get_name() == "MMC/DC" and hasattr(metric, 'evaluate_mmcdc'):
-                    stats['missing_outcomes'] = metric.evaluate_mmcdc(code_obj, executed)
+                metric.post_process(stats, static_source, executed)
 
                 file_results[metric.get_name()] = stats
 

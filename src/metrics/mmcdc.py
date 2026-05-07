@@ -16,6 +16,9 @@ class MMCDCCoverage(ConditionCoverage):
     def get_name(self) -> str:
         return "MMC/DC"
 
+    def _evaluate_outcomes(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
+        return self.evaluate_mmcdc(code_obj, executed_arcs)
+
     def evaluate_mmcdc(self, code_obj: types.CodeType, executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
         global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': [], 'executed': [], 'conditions': 0})
         if not code_obj:
