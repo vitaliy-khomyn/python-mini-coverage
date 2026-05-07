@@ -9,6 +9,26 @@ class BooleanVectorEvaluator:
         fall_val = "False" if jump_val == "True" else "True"
         return jump_val, fall_val
 
+    @classmethod
+    def _process_jump(cls, op_idx: int, vec: Tuple[str, ...], ops: List[Dict[str, Any]], jump_val: str, stack: List[Any], executed_paths: Set[Any]) -> None:
+        new_vec = list(vec)
+        new_vec[op_idx] = jump_val
+        target = int(ops[op_idx]['instr'].argval)
+        next_idx = next((k for k in range(op_idx + 1, len(ops)) if ops[k]['instr'].offset >= target), None)
+        if next_idx is not None:
+            stack.append((next_idx, tuple(new_vec)))
+        else:
+            executed_paths.add((tuple(new_vec), jump_val))
+
+    @classmethod
+    def _process_fallthrough(cls, op_idx: int, vec: Tuple[str, ...], ops: List[Dict[str, Any]], fall_val: str, stack: List[Any], executed_paths: Set[Any]) -> None:
+        new_vec = list(vec)
+        new_vec[op_idx] = fall_val
+        if op_idx == len(ops) - 1:
+            executed_paths.add((tuple(new_vec), fall_val))
+        else:
+            stack.append((op_idx + 1, tuple(new_vec)))
+
     @staticmethod
     def reconstruct_executed_paths(ops: List[Dict[str, Any]], executed_arcs: Set[Tuple[int, int, int]]) -> Set[Tuple[Tuple[str, ...], str]]:
         """Reconstruct the executed condition outcome vectors by traversing the instruction CFG via DFS."""
@@ -31,22 +51,11 @@ class BooleanVectorEvaluator:
             jump_val, fall_val = BooleanVectorEvaluator.get_branch_labels(instr.opname)
 
             if (code_id, instr.offset, target) in executed_arcs:
-                new_vec = list(vec)
-                new_vec[op_idx] = jump_val
-                next_idx = next((k for k in range(op_idx + 1, len(ops)) if ops[k]['instr'].offset >= target), None)
-                if next_idx is not None:
-                    stack.append((next_idx, tuple(new_vec)))
-                else:
-                    executed_paths.add((tuple(new_vec), jump_val))
+                BooleanVectorEvaluator._process_jump(op_idx, vec, ops, jump_val, stack, executed_paths)
 
             next_offset = op_data['next_offset']
             if next_offset is not None and (code_id, instr.offset, next_offset) in executed_arcs:
-                new_vec = list(vec)
-                new_vec[op_idx] = fall_val
-                if op_idx == len(ops) - 1:
-                    executed_paths.add((tuple(new_vec), fall_val))
-                else:
-                    stack.append((op_idx + 1, tuple(new_vec)))
+                BooleanVectorEvaluator._process_fallthrough(op_idx, vec, ops, fall_val, stack, executed_paths)
 
         return executed_paths
 

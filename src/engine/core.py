@@ -316,6 +316,10 @@ class MiniCoverage:
         """
         Check if a file should be traced, utilizing a high-speed cache.
         """
+        # Do not cache or trace dynamically generated files (e.g., <string>, <ast>)
+        if filename.startswith('<') and filename.endswith('>'):
+            return False
+
         if filename not in self._cache_traceable:
             self._cache_traceable[filename] = self._should_trace(filename)
         return self._cache_traceable[filename]
@@ -324,6 +328,13 @@ class MiniCoverage:
         """
         Compatibility wrapper for C tracer which expects this method to exist on the engine.
         """
+        # Clear the cache if it grows too large to prevent memory leaks
+        if len(self._cache_traceable) > 4096:
+            self._cache_traceable.clear()
+
+        if filename.startswith('<') and filename.endswith('>'):
+            return False
+
         norm_file = self.path_manager.canonicalize(filename)
         # ensure matching the directory boundary to avoid prefix collisions
         if not os.environ.get("MINICOV_SELF_MEASURE"):
