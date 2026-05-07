@@ -1,7 +1,8 @@
 import ast
-from typing import Set, Tuple, Optional
+from typing import Set, Tuple, Optional, Any
 
 from .base import CoverageMetric
+from .visitor import NextStatementVisitor
 from ..engine.trace_data import TraceDataType
 
 
@@ -17,82 +18,77 @@ class BranchCoverage(CoverageMetric):
         return TraceDataType.ARCS
 
     def get_possible_elements(self, ast_tree: ast.AST, ignored_lines: Set[int]) -> Set[Tuple[int, int]]:
-        arcs: Set[Tuple[int, int]] = set()
-        if hasattr(ast_tree, 'body'):
-            # ast_tree is expected to be a Module or similar container
-            self._scan_body(getattr(ast_tree, 'body'), arcs, None, ignored_lines)
-        return arcs
+        visitor = BranchVisitor(ignored_lines)
+        visitor.visit(ast_tree)
+        return visitor.arcs
 
-    def _scan_body(self, statements: list, arcs: Set[Tuple[int, int]], next_lineno: Optional[int],
-                   ignored_lines: Set[int]) -> None:
+
+class BranchVisitor(NextStatementVisitor):
+    """
+    Traverses the AST to identify logical control flow branches.
+    """
+    def __init__(self, ignored_lines: Set[int]):
+        super().__init__(ignored_lines)
+        self.arcs: Set[Tuple[int, int]] = set()
+
+    def _add_arc(self, start: int, target_node: Optional[ast.AST]) -> None:
+        if target_node and hasattr(target_node, 'lineno'):
+            # Ignore same-line arcs (inline statements don't represent true line-level branches)
+            if target_node.lineno != start:
+                self.arcs.add((start, target_node.lineno))
+
+    def _find_next_statement(self, node: ast.AST) -> Optional[ast.AST]:
         """
-        Recursively scan a block of statements to identify jump targets.
+        Overrides base method to prevent control flow from escaping
+        scope boundaries like functions or classes.
         """
-        for i, node in enumerate(statements):
-            current_next = next_lineno
-            if i + 1 < len(statements):
-                current_next = statements[i + 1].lineno
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return None
+        return super()._find_next_statement(node)
 
-            if hasattr(node, 'lineno') and node.lineno in ignored_lines:
-                continue
-
-            self._analyze_node(node, arcs, current_next, ignored_lines)
-
-    def _analyze_node(self, node: ast.AST, arcs: Set[Tuple[int, int]], next_lineno: Optional[int],
-                      ignored_lines: Set[int]) -> None:
-        """
-        Analyze a single AST node to find control flow structures.
-        """
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
-            self._scan_body(node.body, arcs, None, ignored_lines)
-            return
-
-        if isinstance(node, ast.If):
+    def visit_If(self, node: ast.If) -> None:
+        if not self.is_ignored(node):
             start = node.lineno
             if node.body:
-                if node.body[0].lineno != start:
-                    arcs.add((start, node.body[0].lineno))
-                self._scan_body(node.body, arcs, next_lineno, ignored_lines)
+                self._add_arc(start, node.body[0])
             if node.orelse:
-                if node.orelse[0].lineno != start:
-                    arcs.add((start, node.orelse[0].lineno))
-                self._scan_body(node.orelse, arcs, next_lineno, ignored_lines)
+                self._add_arc(start, node.orelse[0])
             else:
-                if next_lineno:
-                    arcs.add((start, next_lineno))
+                self._add_arc(start, self._find_next_statement(node))
+        self.generic_visit(node)
 
-        elif isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
+    def _handle_loop(self, node: Any) -> None:
+        if not self.is_ignored(node):
             start = node.lineno
-            if node.body:
-                arcs.add((start, node.body[0].lineno))
-                self._scan_body(node.body, arcs, start, ignored_lines)
-            if node.orelse:
-                arcs.add((start, node.orelse[0].lineno))
-                self._scan_body(node.orelse, arcs, next_lineno, ignored_lines)
-            elif next_lineno:
-                arcs.add((start, next_lineno))
+            if getattr(node, 'body', None):
+                self._add_arc(start, node.body[0])
+            if getattr(node, 'orelse', None):
+                self._add_arc(start, node.orelse[0])
+            else:
+                self._add_arc(start, self._find_next_statement(node))
+        self.generic_visit(node)
 
-        elif hasattr(ast, 'Match') and isinstance(node, ast.Match):
-            start = node.lineno
+    def visit_For(self, node: ast.For) -> None:
+        self._handle_loop(node)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self._handle_loop(node)
+
+    def visit_While(self, node: ast.While) -> None:
+        self._handle_loop(node)
+
+    def visit_Match(self, node: Any) -> None:
+        if not self.is_ignored(node):
+            start = getattr(node, 'lineno', -1)
             has_wildcard = False
-            for case in node.cases:
-                if case.body:
-                    arcs.add((start, case.body[0].lineno))
-                    self._scan_body(case.body, arcs, next_lineno, ignored_lines)
-                if isinstance(case.pattern, getattr(ast, 'MatchAs', type(None))) and case.pattern.pattern is None:
+            for case in getattr(node, 'cases', []):
+                if getattr(case, 'body', None):
+                    self._add_arc(start, case.body[0])
+
+                pattern = getattr(case, 'pattern', None)
+                if isinstance(pattern, getattr(ast, 'MatchAs', type(None))) and getattr(pattern, 'pattern', None) is None:
                     has_wildcard = True
-            if not has_wildcard and next_lineno:
-                arcs.add((start, next_lineno))
 
-        else:
-            if hasattr(node, 'body') and isinstance(node.body, list):
-                self._scan_body(node.body, arcs, next_lineno, ignored_lines)
-            if hasattr(node, 'orelse') and isinstance(node.orelse, list):
-                self._scan_body(node.orelse, arcs, next_lineno, ignored_lines)
-            if hasattr(node, 'finalbody') and isinstance(node.finalbody, list):
-                self._scan_body(node.finalbody, arcs, next_lineno, ignored_lines)
-
-            if hasattr(node, 'handlers') and isinstance(node.handlers, list):
-                for handler in node.handlers:
-                    if hasattr(handler, 'body'):
-                        self._scan_body(handler.body, arcs, next_lineno, ignored_lines)
+            if not has_wildcard:
+                self._add_arc(start, self._find_next_statement(node))
+        self.generic_visit(node)
