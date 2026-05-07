@@ -8,9 +8,9 @@ def render_index(headers: List[str], total_stats: List[Dict[str, Any]], rows: st
     summary_items = []
     for stats in total_stats:
         summary_items.append(
-            f'{stats["display"]}: <span class="{_get_css_class(stats["pct"])}">{stats["pct"]:.1f}% ({stats["ratio"]})</span>'
+            f'<div class="metric-card"><div class="title">{stats["display"]}</div><div class="value {_get_css_class(stats["pct"])}">{stats["pct"]:.1f}% <span class="ratio">({stats["ratio"]})</span></div></div>'
         )
-    summary_html = " | ".join(summary_items)
+    summary_html = "".join(summary_items)
     header_html = "".join([f'<th class="numeric sortable" onclick="sortTable({i+1}, this)">{h} <span></span></th>' for i, h in enumerate(headers)])
     return f"""
 <!DOCTYPE html>
@@ -21,7 +21,11 @@ def render_index(headers: List[str], total_stats: List[Dict[str, Any]], rows: st
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 20px; color: #333; }}
         h1 {{ margin-bottom: 20px; }}
-        .summary {{ margin-bottom: 30px; padding: 15px; background: #f8f9fa; border-radius: 5px; border: 1px solid #e9ecef; }}
+        .summary {{ display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 30px; }}
+        .metric-card {{ flex: 1; min-width: 150px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+        .metric-card .title {{ font-size: 0.85em; color: #6c757d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; font-weight: 600; }}
+        .metric-card .value {{ font-size: 1.6em; font-weight: bold; }}
+        .metric-card .ratio {{ font-size: 0.5em; color: #adb5bd; font-weight: normal; }}
         table {{ border-collapse: collapse; width: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
         th, td {{ border: 1px solid #dee2e6; padding: 12px; text-align: left; }}
         th {{ background-color: #e9ecef; font-weight: 600; }}
@@ -93,7 +97,7 @@ def render_index(headers: List[str], total_stats: List[Dict[str, Any]], rows: st
 <body>
     <h1>Coverage Report</h1>
     <div class="summary">
-        <strong>Total Coverage:</strong> {summary_html}
+        {summary_html}
     </div>
     <table>
         <thead>
@@ -147,44 +151,61 @@ def render_file(filename: str, code_html: str) -> str:
     <meta charset="UTF-8">
     <title>Coverage: {filename}</title>
     <style>
-        body {{ font-family: monospace; white-space: pre; margin: 0; padding: 0; }}
-        .line {{ display: block; padding: 0 5px; clear: both; }}
-        .lineno {{ color: #999; padding-right: 10px; user-select: none; }}
-        .hit {{ background-color: #d4edda; }}
-        .miss {{ background-color: #f8d7da; }}
-        .partial {{ background-color: #fff3cd; }}
-        .annotation-toggle {{ color: #721c24; background-color: #f8d7da; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; cursor: pointer; float: right; margin-left: 20px; font-weight: bold; }}
-        .annotation-toggle:hover {{ text-decoration: underline; }}
-        .annotation-details {{
-            display: none;
-            margin-top: 5px;
-            margin-bottom: 5px;
-            padding: 5px 10px;
-            background-color: #f8d7da;
-            color: #721c24;
-            border-left: 3px solid #721c24;
-            font-family: sans-serif;
-            white-space: normal;
-            font-size: 0.9em;
-            clear: both;
-        }}
-        .line.has-details {{ cursor: pointer; }}
-        .condition-table {{ width: auto; border-collapse: collapse; font-size: 0.9em; margin-top: 5px; border: 1px solid #721c24; }}
-        .condition-table th, .condition-table td {{ border: 1px solid #721c24; padding: 4px; text-align: left; }}
-        .condition-table th {{ background-color: #e9ecef; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background: #f8f9fa; }}
+        .header {{ padding: 12px 20px; background: #fff; border-bottom: 1px solid #dee2e6; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 100; display: flex; align-items: center; gap: 15px; }}
+        .header a {{ text-decoration: none; color: #495057; font-weight: 500; border: 1px solid #ced4da; padding: 6px 12px; border-radius: 4px; transition: all 0.2s; background: #f8f9fa; font-size: 0.9em; }}
+        .header a:hover {{ background: #e9ecef; color: #212529; }}
+        .header strong {{ font-family: monospace; font-size: 1.1em; color: #343a40; }}
+        
+        .code-container {{ background: #fff; margin: 20px; border-radius: 8px; border: 1px solid #dee2e6; box-shadow: 0 2px 5px rgba(0,0,0,0.05); overflow: hidden; }}
+        .line {{ display: flex; align-items: stretch; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 14px; line-height: 1.6; border-bottom: 1px solid #f1f3f5; }}
+        .line:last-child {{ border-bottom: none; }}
+        
+        .lineno {{ width: 50px; min-width: 50px; text-align: right; padding-right: 15px; color: #adb5bd; background: #f8f9fa; border-right: 1px solid #dee2e6; user-select: none; padding-top: 2px; padding-bottom: 2px; }}
+        .code-content {{ flex: 1; padding-left: 15px; padding-top: 2px; padding-bottom: 2px; white-space: pre-wrap; word-break: break-all; position: relative; }}
+        
+        .hit {{ background-color: #e6f4ea; }}
+        .miss {{ background-color: #fce4e4; }}
+        .partial {{ background-color: #fff8e1; }}
+        
+        .hit .lineno {{ background-color: #d4edda; color: #155724; border-right-color: #c3e6cb; }}
+        .miss .lineno {{ background-color: #f8d7da; color: #721c24; border-right-color: #f5c6cb; }}
+        .partial .lineno {{ background-color: #fff3cd; color: #856404; border-right-color: #ffeeba; }}
+        
+        .annotation-toggle {{ color: #fff; background-color: #dc3545; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; cursor: pointer; font-weight: bold; white-space: nowrap; margin-left: 15px; vertical-align: middle; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; transition: background-color 0.2s; display: inline-block; }}
+        .annotation-toggle:hover {{ background-color: #c82333; }}
+        .partial .annotation-toggle {{ background-color: #ffc107; color: #212529; }}
+        .partial .annotation-toggle:hover {{ background-color: #e0a800; }}
+        
+        .annotation-details {{ display: none; margin-top: 8px; margin-bottom: 5px; padding: 10px; background-color: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; white-space: normal; font-size: 0.9em; border-radius: 0 4px 4px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+        .partial .annotation-details {{ background-color: #fff3cd; color: #856404; border-left-color: #ffc107; }}
+        
+        .line.has-details .code-content {{ cursor: pointer; }}
         .line.open .annotation-details {{ display: block; }}
-        .annotation-list {{ margin: 0; padding-left: 20px; }}
+        
+        .condition-table {{ width: 100%; border-collapse: collapse; font-size: 0.9em; margin-top: 8px; border: 1px solid #dee2e6; background: #fff; }}
+        .condition-table th, .condition-table td {{ border: 1px solid #dee2e6; padding: 6px 10px; text-align: left; color: #212529; }}
+        .condition-table th {{ background-color: #f8f9fa; font-weight: 600; color: #495057; }}
+        .condition-table tr.hit td {{ background-color: #e6f4ea; }}
+        .condition-table tr.miss td {{ background-color: #fce4e4; }}
+        .annotation-list {{ margin: 0; padding: 0; list-style: none; }}
     </style>
     <script>
         function toggleDetails(el, event) {{
-            if (event && event.target.closest('.annotation-details')) return;
+            if (event && event.target.closest('.annotation-details') || (event && event.target.tagName.toLowerCase() === 'a')) return;
             var line = el.closest('.line');
-            line.classList.toggle('open');
+            if (line) line.classList.toggle('open');
         }}
     </script>
 </head>
 <body>
-    {code_html}
+    <div class="header">
+        <a href="index.html">← Back to Index</a>
+        <strong>{filename}</strong>
+    </div>
+    <div class="code-container">
+        {code_html}
+    </div>
 </body>
 </html>
 """
@@ -198,15 +219,14 @@ def render_code_line(lineno: int, content: str, css_class: str, toggle_text: Opt
         extra_attrs = ' onclick="toggleDetails(this, event)"'
 
     line_div = f'<div class="line {css_class}"{extra_attrs}>'
-    line_div += f'<span class="lineno">{lineno}</span>'
+    line_div += f'<div class="lineno">{lineno}</div>'
+    line_div += f'<div class="code-content">{content}'
 
     if toggle_text:
         line_div += f"<span class='annotation-toggle'>{toggle_text}</span>"
 
-    line_div += content
-
     if details_html:
         line_div += f'<div class="annotation-details">{details_html}</div>'
 
-    line_div += '</div>'
+    line_div += '</div></div>'
     return line_div

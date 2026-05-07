@@ -27,11 +27,20 @@ class OutcomeFormatter:
             if filter_redundant:
                 missing = OutcomeFormatter._filter_redundant_vectors(missing)
 
+            def sort_vector(item: Dict[str, Any]) -> Tuple[int, ...]:
+                if 'vector' not in item:
+                    return (999,)  # Push message-only items (like MMC/DC warnings) to the bottom
+                order = {"True": 0, "False": 1, "-": 2, "?": 3}
+                return tuple(order.get(str(v), 4) for v in item['vector'])
+
+            missing = sorted(missing, key=sort_vector)
+            executed = sorted(stats.get('executed', []), key=sort_vector)
+
             covered = stats['total'] - len(missing)
             ratio = f"{covered}/{stats['total']}"
             result[lineno] = {
                 'missing': missing,
-                'executed': stats.get('executed', []),
+                'executed': executed,
                 'conditions': stats.get('conditions', 0),
                 'ratio': ratio,
                 'covered': covered,

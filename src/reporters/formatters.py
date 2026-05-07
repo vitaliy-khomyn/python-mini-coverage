@@ -57,6 +57,8 @@ class BranchFormatter(BaseFormatter):
 
 
 class ConditionFormatter(BaseFormatter):
+    max_rows_display = 10
+
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
         annotations = collections.defaultdict(list)
         missing_outcomes = stats.get('missing_outcomes', {})
@@ -72,12 +74,24 @@ class ConditionFormatter(BaseFormatter):
 
                 rows = [header_row]
 
-                for item in cond_info.get('executed', []):
+                executed_items = cond_info.get('executed', [])
+                for i, item in enumerate(executed_items):
+                    if self.max_rows_display and i >= self.max_rows_display and len(executed_items) > self.max_rows_display + 1:
+                        remaining = len(executed_items) - self.max_rows_display
+                        rows.append(f"<tr class='hit'><td colspan='{conditions_count + 1}' style='text-align: center; font-style: italic; color: #6c757d; background-color: #f8f9fa;'>... and {remaining} more executed combinations</td></tr>")
+                        break
+
                     vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
                     result_html = f"<td>{html.escape(str(item['result']))}</td>"
                     rows.append(f"<tr class='hit'>{vector_html}{result_html}</tr>")
 
-                for item in cond_info.get('missing', []):
+                missing_items = cond_info.get('missing', [])
+                for i, item in enumerate(missing_items):
+                    if self.max_rows_display and i >= self.max_rows_display and len(missing_items) > self.max_rows_display + 1:
+                        remaining = len(missing_items) - self.max_rows_display
+                        rows.append(f"<tr class='miss'><td colspan='{conditions_count + 1}' style='text-align: center; font-style: italic; color: #6c757d; background-color: #f8f9fa;'>... and {remaining} more missed combinations</td></tr>")
+                        break
+
                     if 'message' in item:
                         rows.append(f"<tr class='miss'><td colspan='{conditions_count + 1}'>{html.escape(item['message'])}</td></tr>")
                     else:
@@ -104,6 +118,8 @@ class ConditionFormatter(BaseFormatter):
 
 
 class MMCDCFormatter(ConditionFormatter):
+    max_rows_display = 20
+
     def format_console(self, stats: Dict[str, Any]) -> str:
         missing_outcomes = stats.get('missing_outcomes', {})
         count = sum(len(m.get('missing', [])) for m in missing_outcomes.values())

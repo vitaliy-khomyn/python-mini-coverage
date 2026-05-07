@@ -117,6 +117,8 @@ class BooleanVectorEvaluator:
     def find_missing_mmcdc_pairs(ops: List[Dict[str, Any]], executed_paths: Set[Tuple[Tuple[str, ...], str]]) -> List[Dict[str, Any]]:
         """Find variables that fail to prove their independent effect on the outcome (Masking MC/DC)."""
         missing = []
+        possible_paths = BooleanVectorEvaluator.get_all_possible_paths(ops)
+        
         for i in range(len(ops)):
             pair_found = False
             for p1, out1 in executed_paths:
@@ -131,5 +133,22 @@ class BooleanVectorEvaluator:
                     break
 
             if not pair_found:
-                missing.append({'message': f"Condition {i+1} independent effect not proven", 'terminal': True})
+                suggestion = ""
+                suggestion_found = False
+                for p1, out1 in possible_paths:
+                    for p2, out2 in possible_paths:
+                        if out1 != out2 and p1[i] != p2[i] and p1[i] != "-" and p2[i] != "-":
+                            if all(p1[j] == "-" or p2[j] == "-" or p1[j] == p2[j] for j in range(len(ops)) if i != j):
+                                v1 = f"({', '.join(p1)})"
+                                v2 = f"({', '.join(p2)})"
+                                suggestion = f"Suggest pair: {v1} -> {out1} and {v2} -> {out2}"
+                                suggestion_found = True
+                                break
+                    if suggestion_found:
+                        break
+                
+                msg = f"Condition {i+1} independent effect not proven."
+                if suggestion:
+                    msg += f" {suggestion}"
+                missing.append({'message': msg, 'terminal': True})
         return missing

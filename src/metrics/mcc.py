@@ -43,7 +43,8 @@ class MCCCoverage(ConditionCoverage):
 
             stats['missing'] = []
             for p, out in missing_paths:
-                stats['missing'].append({'vector': list(p), 'result': out, 'message': f"MCC Combination ({', '.join(p)}) -> {out} was not executed"})
+                # By omitting the 'message' key, the formatter renders this as a clean table row.
+                stats['missing'].append({'vector': list(p), 'result': out, 'terminal': True})
 
             stats['executed'] = [{'vector': list(p), 'result': out} for p, out in executed_paths]
             stats['conditions'] = len(ops)
