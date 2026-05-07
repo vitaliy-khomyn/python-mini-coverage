@@ -88,3 +88,18 @@ async def my_async_func():
         missing = {("my_func", 10, 11)}
         mapped = self.metric.map_missing_elements(missing)
         self.assertEqual(mapped, {10: "Function 'my_func' was not called"})
+
+    def test_lambda_ignored(self):
+        # Lambdas lack block bodies in the AST and are ignored by FunctionCoverage 
+        code = "f = lambda x: x + 1"
+        funcs = self.get_funcs(code)
+        self.assertEqual(funcs, set())
+
+    def test_class_methods(self):
+        code = """
+class MyClass:
+    def my_method(self):
+        x = 1
+"""
+        funcs = self.get_funcs(code)
+        self.assertEqual(funcs, {("my_method", 3, 4)})

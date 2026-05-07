@@ -63,3 +63,18 @@ other_func()
         stats = self.metric.calculate_stats(set(), set())
         self.assertEqual(stats['pct'], 100.0)
         self.assertEqual(stats['ratio'], "0/0")
+
+    def test_star_args_kwargs(self):
+        code = "func(*args, **kwargs)"
+        calls = self.get_calls(code)
+        self.assertEqual(calls, {("func", 1)})
+
+    def test_indirect_calls(self):
+        code = "getattr(obj, 'method')()"
+        calls = self.get_calls(code)
+        self.assertEqual(calls, {("getattr", 1), ("<callable>", 1)})
+
+    def test_list_comprehension_calls(self):
+        code = "[f(x) for x in items]"
+        calls = self.get_calls(code)
+        self.assertEqual(calls, {("f", 1)})

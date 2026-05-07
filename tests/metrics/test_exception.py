@@ -1,3 +1,4 @@
+import sys
 from .base import TestMetricsBase
 from src.metrics.exception import ExceptionCoverage
 
@@ -60,3 +61,37 @@ except ZeroDivisionError:
         stats = self.metric.calculate_stats(set(), set())
         self.assertEqual(stats['pct'], 100.0)
         self.assertEqual(stats['ratio'], "0/0")
+
+    def test_exception_path_accounting(self):
+        code = """
+def explode():
+    raise ValueError()
+
+try:
+    if explode() and x:
+        pass
+except ValueError:
+    pass
+"""
+        self.assertEqual(self.get_excepts(code), {8})
+
+    def test_bare_except(self):
+        code = """
+try:
+    pass
+except:
+    pass
+"""
+        self.assertEqual(self.get_excepts(code), {4})
+
+    def test_exception_group(self):
+        # Python 3.11+ except* syntax (Exception groups)
+        if sys.version_info < (3, 11):
+            return
+        code = """
+try:
+    pass
+except* ValueError:
+    pass
+"""
+        self.assertEqual(self.get_excepts(code), {4})

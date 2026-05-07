@@ -111,3 +111,114 @@ decision(False, True, False)
         # resulting in an over-approximation of 3/3 conditions covered.
         self.assertEqual(mcdc_stats[3]['ratio'], "3/3")
         self.assertEqual(len(mcdc_stats[3]['missing']), 0)
+
+    def test_instrumentation_does_not_double_evaluate(self):
+        code = """
+counter = 0
+
+def cond():
+    global counter
+    counter += 1
+    return True
+
+if cond():
+    pass
+
+assert counter == 1
+"""
+        # Should run without AssertionError
+        missing = self._run_script(code)
+        self.assertIn(9, missing)
+
+    def test_truthiness_semantics(self):
+        code = """
+class Weird:
+    def __bool__(self):
+        return True
+
+if Weird():
+    pass
+"""
+        missing = self._run_script(code)
+        self.assertIn(6, missing)
+        self.assertEqual(missing[6]['ratio'], "0/1")
+
+    def test_mcdc_nested_expressions(self):
+        code = """
+def decision(a, b, c, d):
+    if (a and b) or (c and not d):
+        return True
+    return False
+
+decision(True, True, False, False)
+decision(True, False, True, False)
+decision(False, True, False, False)
+decision(True, False, False, False)
+decision(False, False, True, True)
+"""
+        missing = self._run_script(code)
+        self.assertIn(3, missing)
+
+    def test_mcdc_repeated_conditions(self):
+        code = """
+def decision(a, b):
+    if a and (a or b):
+        pass
+
+decision(True, False)
+decision(False, True)
+"""
+        missing = self._run_script(code)
+        self.assertIn(3, missing)
+
+    def test_mcdc_masked_condition(self):
+        code = """
+def decision(a, b):
+    if a or (a and b):
+        pass
+
+decision(True, False)
+decision(False, True)
+"""
+        missing = self._run_script(code)
+        self.assertIn(3, missing)
+        # Because a and b is masked when a is True, b can't be independently evaluated.
+        self.assertGreater(len(missing[3]['missing']), 0)
+
+    def test_mcdc_coupled_conditions(self):
+        code = """
+def decision(x):
+    if (x > 0) and (x > -1):
+        pass
+
+decision(1)
+decision(-2)
+"""
+        missing = self._run_script(code)
+        self.assertIn(3, missing)
+
+    def test_mcdc_exception_interruption(self):
+        code = """
+def explode():
+    raise ValueError()
+
+try:
+    if explode() and True:
+        pass
+except ValueError:
+    pass
+"""
+        missing = self._run_script(code)
+        self.assertIn(6, missing)
+
+    def test_mcc_explosion(self):
+        code = """
+def decision(a, b, c, d, e, f):
+    if a and b and c and d and e and f:
+        pass
+
+decision(True, True, True, True, True, True)
+decision(False, True, True, True, True, True)
+"""
+        missing = self._run_script(code)
+        self.assertIn(3, missing)

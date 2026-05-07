@@ -1,4 +1,6 @@
 import ast
+import sys
+
 from src.metrics import BranchCoverage
 from .base import TestMetricsBase
 
@@ -198,3 +200,41 @@ finally:
         code = "x = 1 if y else 2"
         arcs = self.get_arcs(code)
         self.assertEqual(arcs, set())
+
+    def test_chained_comparison(self):
+        code = "if 1 < x < 10:\n    pass"
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, {(1, 2)})
+
+    def test_walrus_operator(self):
+        if sys.version_info < (3, 8):
+            return
+        code = "if (n := get()) > 0:\n    pass"
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, {(1, 2)})
+
+    def test_async_condition(self):
+        code = "async def func():\n    if await cond():\n        pass"
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, {(2, 3)})
+
+    def test_generator_condition(self):
+        code = "if next(gen):\n    pass"
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, {(1, 2)})
+
+    def test_comprehension_filter(self):
+        code = "[x for x in values if x > 0]"
+        arcs = self.get_arcs(code)
+        # Comprehensions are typically ignored by standard branch coverage unless explicitly mapped
+        self.assertEqual(arcs, set())
+
+    def test_boolean_assignment(self):
+        code = "x = [] or [1]"
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, set())
+
+    def test_exception_interruption(self):
+        code = "if explode() and x:\n    pass"
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, {(1, 2)})

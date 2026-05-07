@@ -1,3 +1,5 @@
+import sys
+
 from src.metrics import ConditionCoverage
 from .base import TestMetricsBase
 
@@ -82,3 +84,59 @@ if (a or b) and (c or d) and e:
         # generating no jump instruction for 'e' itself.
         # 4 jumping operands * 2 arcs = 8 arcs
         self.assertEqual(len(conditions), 8)
+
+    def test_chained_comparison(self):
+        code = "if 1 < x < 10:\n    pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 4)
+
+    def test_walrus_operator(self):
+        if sys.version_info < (3, 8): return
+        code = "if (n := get()) > 0:\n    pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+
+    def test_async_condition(self):
+        code = "async def func():\n    if await cond():\n        pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+
+    def test_generator_condition(self):
+        code = "if next(gen):\n    pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+
+    def test_comprehension_filter(self):
+        code = "[x for x in values if x > 0]"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+
+    def test_boolean_assignment(self):
+        code = "x = [] or [1]"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+
+    def test_truthiness_class(self):
+        code = "class Weird:\n    def __bool__(self):\n        return True\nif Weird():\n    pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+
+    def test_exception_interruption(self):
+        code = "if explode() and x:\n    pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 4)
+
+    def test_dynamic_attribute_lookup(self):
+        code = "if x.foo:\n    pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+
+    def test_property_side_effects(self):
+        code = "if x.value:\n    pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 2)
+
+    def test_mcc_explosion(self):
+        code = "if a and b and c and d and e and f:\n    pass"
+        conditions = self.get_conditions(code)
+        self.assertEqual(len(conditions), 12)

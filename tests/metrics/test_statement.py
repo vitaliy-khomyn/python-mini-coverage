@@ -86,3 +86,28 @@ y: str
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
         self.assertIn(2, lines)
+
+    def test_multiple_assignment(self):
+        code = "a = b = c = 1"
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        self.assertEqual(lines, {1})
+
+    def test_iterable_unpacking(self):
+        code = "a, *b, c = [1, 2, 3, 4]"
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        self.assertEqual(lines, {1})
+
+    def test_deletion(self):
+        code = "x = 1\ndel x"
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        self.assertEqual(lines, {1, 2})
+
+    def test_dynamic_execution_strings(self):
+        # Static analyzer only sees the exec/eval call, not the inner code string
+        code = "exec('y = 2')\neval('1 + 1')"
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        self.assertEqual(lines, {1, 2})

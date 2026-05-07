@@ -105,3 +105,20 @@ class Child(Parent):
 """
         classes = self.get_classes(code)
         self.assertEqual(classes, {("Parent", 2, 4)})
+
+    def test_dynamic_type_creation_ignored(self):
+        # type() dynamic classes do not have an ast.ClassDef, so static analysis skips them.
+        code = "DynamicClass = type('DynamicClass', (object,), {'__init__': lambda self: None})"
+        classes = self.get_classes(code)
+        self.assertEqual(classes, set())
+
+    def test_inner_class(self):
+        code = """
+def factory():
+    class Inner:
+        def __init__(self):
+            self.x = 1
+    return Inner
+"""
+        classes = self.get_classes(code)
+        self.assertEqual(classes, {("Inner", 3, 5)})

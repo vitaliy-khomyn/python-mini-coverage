@@ -69,3 +69,13 @@ def my_func():
         arcs = self.get_arcs(code)
         # Arc to enter (3->4), arc to skip (3->5)
         self.assertEqual(arcs, {(3, 4), (3, 5)})
+
+    def test_exotic_iterator(self):
+        # Iterator wrapping a callable until sentinel value is reached
+        code = """
+for chunk in iter(lambda: f.read(10), b''):
+    process(chunk)
+print("done")
+"""
+        arcs = self.get_arcs(code)
+        self.assertEqual(arcs, {(2, 3), (2, 4)})
