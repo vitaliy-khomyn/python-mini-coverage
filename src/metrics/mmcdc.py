@@ -4,7 +4,7 @@ import types
 from typing import Set, Tuple, Dict, Any
 
 from .boolean_vector import BooleanVectorEvaluator
-from .condition import ConditionCoverage
+from .condition import ConditionCoverage, OutcomeFormatter
 
 
 class MMCDCCoverage(ConditionCoverage):
@@ -27,21 +27,7 @@ class MMCDCCoverage(ConditionCoverage):
         self._collect_line_ops(code_obj, global_line_stats)
         self._analyze_mmcdc(global_line_stats, executed_arcs)
 
-        result = {}
-        for lineno, stats in global_line_stats.items():
-            if stats['total'] == 0:
-                continue
-            covered = stats['total'] - len(stats['missing'])
-            ratio = f"{covered}/{stats['total']}"
-            result[lineno] = {
-                'missing': stats['missing'],
-                'executed': stats.get('executed', []),
-                'conditions': stats.get('conditions', 0),
-                'ratio': ratio,
-                'covered': covered,
-                'total': stats['total']
-            }
-        return result
+        return OutcomeFormatter.format_line_outcomes(global_line_stats, filter_redundant=False)
 
     def _analyze_mmcdc(self, global_line_stats: Dict[int, Any], executed_arcs: Set[Tuple[int, int, int]]) -> None:
         """Reconstruct executed paths and verify MMC/DC Independence Pairs."""

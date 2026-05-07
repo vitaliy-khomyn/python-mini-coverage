@@ -11,6 +11,91 @@ from .boolean_vector import BooleanVectorEvaluator
 from ..engine.trace_data import TraceDataType
 
 
+class OutcomeFormatter:
+    """
+    Handles string formatting, redundancy filtering, and statistics
+    aggregation for condition-based coverage metrics.
+    """
+    @staticmethod
+    def format_line_outcomes(global_line_stats: Dict[int, Any], filter_redundant: bool = False) -> Dict[int, Any]:
+        result = {}
+        for lineno, stats in global_line_stats.items():
+            if stats.get('total', 0) == 0:
+                continue
+
+            missing = stats.get('missing', [])
+            if filter_redundant:
+                missing = OutcomeFormatter._filter_redundant_vectors(missing)
+
+            covered = stats['total'] - len(missing)
+            ratio = f"{covered}/{stats['total']}"
+            result[lineno] = {
+                'missing': missing,
+                'executed': stats.get('executed', []),
+                'conditions': stats.get('conditions', 0),
+                'ratio': ratio,
+                'covered': covered,
+                'total': stats['total']
+            }
+        return result
+
+    @staticmethod
+    def _filter_redundant_vectors(raw_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Filter out intermediate missing vectors that are covered by more specific ones."""
+        if not raw_items:
+            return []
+
+        indices_to_remove = set()
+        for i, item_a in enumerate(raw_items):
+            if item_a['terminal']:
+                continue
+            vec_a = item_a['vector']
+            try:
+                stop_idx = vec_a.index("?")
+                prefix_a = vec_a[:stop_idx]
+            except ValueError:
+                prefix_a = vec_a
+
+            for j, item_b in enumerate(raw_items):
+                if i == j:
+                    continue
+                vec_b = item_b['vector']
+                if len(vec_b) >= len(prefix_a) and vec_b[:len(prefix_a)] == prefix_a:
+                    indices_to_remove.add(i)
+                    break
+
+        return [
+            {'vector': [v if v != "?" else "-" for v in item['vector']], 'result': item['result'], 'terminal': item['terminal']}
+            for i, item in enumerate(raw_items) if i not in indices_to_remove
+        ]
+
+    @staticmethod
+    def format_global_stats(stats: Dict[str, Any], missing_outcomes: Dict[int, Any]) -> None:
+        """
+        Mutates the top-level stats dictionary to reflect condition vectors
+        instead of raw bytecode arcs.
+        """
+        stats['missing_outcomes'] = missing_outcomes
+
+        total_conditions = 0
+        missing_conditions = []
+        for lineno, outcome in missing_outcomes.items():
+            total_conditions += outcome.get('total', 0)
+            for m in outcome.get('missing', []):
+                msg = m.get('message')
+                if not msg:
+                    vec_str = ", ".join(m.get('vector', []))
+                    res = m.get('result', '?')
+                    msg = f"Vector ({vec_str}) -> {res}"
+                missing_conditions.append(f"Line {lineno}: {msg}")
+
+        stats['total'] = total_conditions
+        stats['missing'] = missing_conditions
+        stats['covered'] = total_conditions - len(missing_conditions)
+        stats['pct'] = round((stats['covered'] / total_conditions) * 100, 2) if total_conditions > 0 else 100.0
+        stats['ratio'] = f"{stats['covered']}/{total_conditions}"
+
+
 class ConditionCoverage(CoverageMetric):
     """
     Condition Coverage Implementation.
@@ -162,21 +247,7 @@ class ConditionCoverage(CoverageMetric):
         self._collect_line_ops(code_obj, global_line_stats)
         self._analyze_line_ops(global_line_stats, missing_arcs, executed_arcs)
 
-        # Format the result
-        result = {}
-        for lineno, stats in global_line_stats.items():
-            clean_missing = self._filter_redundant_vectors(stats.get('missing', []))
-            covered = stats['total'] - len(clean_missing)
-            ratio = f"{covered}/{stats['total']}"
-            result[lineno] = {
-                'missing': clean_missing,
-                'executed': stats.get('executed', []),
-                'conditions': stats.get('conditions', 0),
-                'ratio': ratio,
-                'covered': covered,
-                'total': stats['total']
-            }
-        return result
+        return OutcomeFormatter.format_line_outcomes(global_line_stats, filter_redundant=True)
 
     def _collect_line_ops(self, co: types.CodeType, line_stats: Dict[int, Any]) -> None:
         """Recursively visit code objects and group boolean instructions by line number."""
@@ -232,35 +303,6 @@ class ConditionCoverage(CoverageMetric):
 
             stats['missing'].extend(BooleanVectorEvaluator.find_missing_condition_arcs(ops, missing_arcs))
 
-    def _filter_redundant_vectors(self, raw_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Filter out intermediate missing vectors that are covered by more specific ones."""
-        if not raw_items:
-            return []
-
-        indices_to_remove = set()
-        for i, item_a in enumerate(raw_items):
-            if item_a['terminal']:
-                continue
-            vec_a = item_a['vector']
-            try:
-                stop_idx = vec_a.index("?")
-                prefix_a = vec_a[:stop_idx]
-            except ValueError:
-                prefix_a = vec_a
-
-            for j, item_b in enumerate(raw_items):
-                if i == j:
-                    continue
-                vec_b = item_b['vector']
-                if len(vec_b) >= len(prefix_a) and vec_b[:len(prefix_a)] == prefix_a:
-                    indices_to_remove.add(i)
-                    break
-
-        return [
-            {'vector': [v if v != "?" else "-" for v in item['vector']], 'result': item['result'], 'terminal': item['terminal']}
-            for i, item in enumerate(raw_items) if i not in indices_to_remove
-        ]
-
     def _evaluate_outcomes(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
         return self.map_missing_arcs(code_obj, missing_arcs, executed_arcs)
 
@@ -273,22 +315,5 @@ class ConditionCoverage(CoverageMetric):
         if not code_obj or not isinstance(code_obj, types.CodeType):
             return
 
-        stats['missing_outcomes'] = self._evaluate_outcomes(code_obj, stats['missing'], executed_data)
-
-        total_conditions = 0
-        missing_conditions = []
-        for lineno, outcome in stats['missing_outcomes'].items():
-            total_conditions += outcome.get('total', 0)
-            for m in outcome.get('missing', []):
-                msg = m.get('message')
-                if not msg:
-                    vec_str = ", ".join(m.get('vector', []))
-                    res = m.get('result', '?')
-                    msg = f"Vector ({vec_str}) -> {res}"
-                missing_conditions.append(f"Line {lineno}: {msg}")
-
-        stats['total'] = total_conditions
-        stats['missing'] = missing_conditions
-        stats['covered'] = total_conditions - len(missing_conditions)
-        stats['pct'] = round((stats['covered'] / total_conditions) * 100, 2) if total_conditions > 0 else 100.0
-        stats['ratio'] = f"{stats['covered']}/{total_conditions}"
+        missing_outcomes = self._evaluate_outcomes(code_obj, stats['missing'], executed_data)
+        OutcomeFormatter.format_global_stats(stats, missing_outcomes)
