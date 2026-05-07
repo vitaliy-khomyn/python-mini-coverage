@@ -9,6 +9,7 @@ class ReporterType(str, Enum):
     XML = 'xml'
     JSON = 'json'
 
+
 # Default patterns for files and directories to omit from coverage.
 # This helps automatically exclude virtual environments and system libraries.
 DEFAULT_OMIT_PATTERNS = {

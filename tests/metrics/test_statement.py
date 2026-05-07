@@ -69,7 +69,8 @@ def func():
         self.assertIn(4, lines)
 
     def test_walrus_operator(self):
-        if sys.version_info < (3, 8): return
+        if sys.version_info < (3, 8):
+            return
         code = """
 if (x := 1) > 0:
     y = 2

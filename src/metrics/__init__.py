@@ -7,6 +7,7 @@ from .condition import ConditionCoverage
 from .exception import ExceptionCoverage
 from .function import FunctionCoverage
 from .loop import LoopCoverage
+from .mcc import MCCCoverage
 from .mmcdc import MMCDCCoverage
 from .return_coverage import ReturnCoverage
 from .statement import StatementCoverage
@@ -23,6 +24,7 @@ __all__ = [
     "FunctionCoverage",
     "ConditionCoverage",
     "LoopCoverage",
+    "MCCCoverage",
     "MMCDCCoverage",
     "ReturnCoverage",
     "StatementCoverage",

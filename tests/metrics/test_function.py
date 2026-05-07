@@ -90,7 +90,7 @@ async def my_async_func():
         self.assertEqual(mapped, {10: "Function 'my_func' was not called"})
 
     def test_lambda_ignored(self):
-        # Lambdas lack block bodies in the AST and are ignored by FunctionCoverage 
+        # Lambdas lack block bodies in the AST and are ignored by FunctionCoverage
         code = "f = lambda x: x + 1"
         funcs = self.get_funcs(code)
         self.assertEqual(funcs, set())

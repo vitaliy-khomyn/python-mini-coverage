@@ -87,7 +87,8 @@ end = 1
         self.assertEqual(arcs, {(2, 3), (2, 5)})
 
     def test_match_case(self):
-        if not hasattr(ast, 'Match'): return
+        if not hasattr(ast, 'Match'):
+            return
         code = """
 match x:
     case 1:
@@ -102,7 +103,8 @@ z = 4
         self.assertTrue({(2, 4), (2, 6), (2, 8)}.issubset(arcs))
 
     def test_match_no_wildcard(self):
-        if not hasattr(ast, 'Match'): return
+        if not hasattr(ast, 'Match'):
+            return
         code = """
 match x:
     case 1:

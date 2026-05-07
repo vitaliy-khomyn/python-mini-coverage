@@ -91,7 +91,8 @@ if (a or b) and (c or d) and e:
         self.assertEqual(len(conditions), 4)
 
     def test_walrus_operator(self):
-        if sys.version_info < (3, 8): return
+        if sys.version_info < (3, 8):
+            return
         code = "if (n := get()) > 0:\n    pass"
         conditions = self.get_conditions(code)
         self.assertEqual(len(conditions), 2)

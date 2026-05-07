@@ -14,7 +14,13 @@ class BooleanVectorEvaluator:
         new_vec = list(vec)
         new_vec[op_idx] = jump_val
         target = int(ops[op_idx]['instr'].argval)
-        next_idx = next((k for k in range(op_idx + 1, len(ops)) if ops[k]['instr'].offset >= target), None)
+
+        if target < ops[op_idx]['instr'].offset:
+            # Backward jump (e.g. end of a while loop condition) is terminal for the condition evaluation chain
+            next_idx = None
+        else:
+            next_idx = next((k for k in range(op_idx + 1, len(ops)) if ops[k]['instr'].offset >= target), None)
+
         if next_idx is not None:
             stack.append((next_idx, tuple(new_vec)))
         else:
@@ -58,6 +64,31 @@ class BooleanVectorEvaluator:
                 BooleanVectorEvaluator._process_fallthrough(op_idx, vec, ops, fall_val, stack, executed_paths)
 
         return executed_paths
+
+    @staticmethod
+    def get_all_possible_paths(ops: List[Dict[str, Any]]) -> Set[Tuple[Tuple[str, ...], str]]:
+        """Find all structurally possible condition vectors considering short-circuit evaluation."""
+        possible_paths = set()
+        stack = [(0, tuple(["-"] * len(ops)))]
+        visited = set()
+
+        while stack:
+            op_idx, vec = stack.pop()
+            if (op_idx, vec) in visited:
+                continue
+            visited.add((op_idx, vec))
+
+            if op_idx >= len(ops):
+                continue
+
+            op_data = ops[op_idx]
+            jump_val, fall_val = BooleanVectorEvaluator.get_branch_labels(op_data['instr'].opname)
+
+            BooleanVectorEvaluator._process_jump(op_idx, vec, ops, jump_val, stack, possible_paths)
+            if op_data['next_offset'] is not None:
+                BooleanVectorEvaluator._process_fallthrough(op_idx, vec, ops, fall_val, stack, possible_paths)
+
+        return possible_paths
 
     @staticmethod
     def find_missing_condition_arcs(ops: List[Dict[str, Any]], missing_arcs: Set[Tuple[int, int, int]]) -> List[Dict[str, Any]]:

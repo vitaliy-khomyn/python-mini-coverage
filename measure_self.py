@@ -10,7 +10,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 
-from src.engine import MiniCoverage
+from src.engine import MiniCoverage  # noqa: E402
 
 
 def main():
@@ -23,9 +23,14 @@ def main():
     print("--- Starting Self-Coverage Measurement ---")
     print(f"Target Directory: {src_dir}")
 
+    # Look for config file in the project root, not the src_dir
+    config_path = os.path.join(project_root, '.coveragerc')
+    if not os.path.exists(config_path):
+        config_path = os.path.join(project_root, 'pyproject.toml')
+
     # initialize MiniCoverage
     # explicitly set project_root to 'src' to avoid tracing the tests themselves or standard libs
-    cov = MiniCoverage(project_root=src_dir)
+    cov = MiniCoverage(project_root=src_dir, config_file=config_path if os.path.exists(config_path) else None)
 
     # Enable self-coverage by removing the default exclusion of the library root.
     # We modify the engine instance via introspection to bypass the safety check.

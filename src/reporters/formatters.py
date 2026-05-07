@@ -38,7 +38,8 @@ class StatementFormatter(BaseFormatter):
 class BranchFormatter(BaseFormatter):
     def format_console(self, stats: Dict[str, Any]) -> str:
         missing = stats.get('missing', set())
-        if not missing: return ""
+        if not missing:
+            return ""
         arcs_str = [f"{start}->{end}" for start, end in sorted(list(missing))]
         if len(arcs_str) > 3:
             return f"Branches: {len(arcs_str)} missed"
@@ -106,13 +107,27 @@ class MMCDCFormatter(ConditionFormatter):
     def format_console(self, stats: Dict[str, Any]) -> str:
         missing_outcomes = stats.get('missing_outcomes', {})
         count = sum(len(m.get('missing', [])) for m in missing_outcomes.values())
-        if count > 0: return f"{count} MMC/DC missed"
+        if count > 0:
+            return f"{count} MMC/DC missed"
         return ""
 
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
         html_map = super().format_html(stats)
         # Rename the generic table header for MMC/DC specifically
         return {k: [v.replace("Condition Coverage", "MMC/DC Coverage") for v in vals] for k, vals in html_map.items()}
+
+
+class MCCFormatter(ConditionFormatter):
+    def format_console(self, stats: Dict[str, Any]) -> str:
+        missing_outcomes = stats.get('missing_outcomes', {})
+        count = sum(len(m.get('missing', [])) for m in missing_outcomes.values())
+        if count > 0:
+            return f"{count} MCC paths missed"
+        return ""
+
+    def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
+        html_map = super().format_html(stats)
+        return {k: [v.replace("Condition Coverage", "MCC Coverage") for v in vals] for k, vals in html_map.items()}
 
 
 def _simple_count_formatter(name: str):

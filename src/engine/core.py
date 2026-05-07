@@ -1,9 +1,9 @@
-import sys
-import os
 import logging
-import shutil
-import threading
 import multiprocessing
+import os
+import shutil
+import sys
+import threading
 import types
 
 from typing import Optional, List, Dict, Any, Set
@@ -14,21 +14,25 @@ try:
 except ImportError:
     minicov_tracer = None
 
-from .config import CoverageConfig
-from .report_manager import ReportManager
 from .analyzer import Analyzer
-from ..tracing.sys_monitoring import SysMonitoringTracer
-from ..tracing.sys_settrace import SysSetTraceTracer
-from .trace_data import TraceContainer
-from .path_manager import PathManager
-from .source_parser import SourceParser
+from .config import CoverageConfig
 from .config_loader import ConfigLoader
+from .path_manager import PathManager
+from .report_manager import ReportManager
+from .source_parser import SourceParser
+from .storage import CoverageStorage
+from .trace_data import TraceContainer
+
 from ..metrics import StatementCoverage, BranchCoverage, ConditionCoverage, FunctionCoverage, LoopCoverage, ClassCoverage
+
 from ..metrics.call_site import CallSiteCoverage
 from ..metrics.exception import ExceptionCoverage
-from ..metrics.return_coverage import ReturnCoverage
+from ..metrics.mcc import MCCCoverage
 from ..metrics.mmcdc import MMCDCCoverage
-from .storage import CoverageStorage
+from ..metrics.return_coverage import ReturnCoverage
+
+from ..tracing.sys_monitoring import SysMonitoringTracer
+from ..tracing.sys_settrace import SysSetTraceTracer
 
 _OriginalProcess = multiprocessing.Process
 
@@ -138,6 +142,7 @@ class MiniCoverage:
             ExceptionCoverage(),
             ReturnCoverage(),
             MMCDCCoverage(),
+            MCCCoverage(),
         ]
 
     def _setup_exclusions(self) -> None:

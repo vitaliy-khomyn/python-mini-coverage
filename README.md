@@ -71,6 +71,7 @@ metrics =
     call
     exc
     ret
+    mcc
 ```
 **Using pyproject.toml:**
 ```.toml
