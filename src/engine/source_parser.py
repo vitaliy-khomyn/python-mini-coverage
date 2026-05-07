@@ -3,7 +3,7 @@ import re
 import types
 import logging
 import tokenize
-from typing import Tuple, Set, Optional, Iterable
+from typing import Tuple, Set, Optional, Iterable, List, Dict
 
 
 class SourceParser:
@@ -13,6 +13,7 @@ class SourceParser:
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
+        self._regex_cache: Dict[Tuple[str, ...], List[re.Pattern]] = {}
 
     def parse_source(
         self,
@@ -33,6 +34,20 @@ class SourceParser:
                    Returns (None, set()) on failure.
         """
         ignored_lines: Set[int] = set()
+
+        cache_key = tuple(exclude_patterns) if exclude_patterns else ()
+        if cache_key not in self._regex_cache:
+            regexes = [re.compile(r'#.*pragma:\s*no\s*cover', re.IGNORECASE)]
+            if exclude_patterns:
+                for pat in exclude_patterns:
+                    try:
+                        regexes.append(re.compile(pat))
+                    except re.error as e:
+                        self.logger.debug(f"Invalid regex pattern '{pat}': {e}")
+            self._regex_cache[cache_key] = regexes
+
+        active_regexes = self._regex_cache[cache_key]
+
         try:
             with tokenize.open(filename) as f:
                 source_lines = f.readlines()
@@ -40,19 +55,8 @@ class SourceParser:
             source_text = "".join(source_lines)
             tree = ast.parse(source_text)
 
-            # default pragma pattern
-            regexes = [re.compile(r'#.*pragma:\s*no\s*cover', re.IGNORECASE)]
-
-            # add user-defined patterns
-            if exclude_patterns:
-                for pat in exclude_patterns:
-                    try:
-                        regexes.append(re.compile(pat))
-                    except re.error as e:
-                        self.logger.debug(f"Invalid regex pattern '{pat}': {e}")
-
             for i, line in enumerate(source_lines):
-                for regex in regexes:
+                for regex in active_regexes:
                     if regex.search(line):
                         ignored_lines.add(i + 1)
                         break

@@ -72,24 +72,17 @@ class ConfigLoader:
         except configparser.Error as e:
             raise ValueError(f"INI parse error: {e}")
 
+        def _get_section(base_name: str) -> Optional[str]:
+            if parser.has_section(base_name):
+                return base_name
+            if parser.has_section(f"coverage:{base_name}"):
+                return f"coverage:{base_name}"
+            return None
+
         # check for existence of ANY relevant section
-        run_section: Optional[str] = None
-        if parser.has_section('run'):
-            run_section = 'run'
-        elif parser.has_section('coverage:run'):
-            run_section = 'coverage:run'
-
-        report_section: Optional[str] = None
-        if parser.has_section('report'):
-            report_section = 'report'
-        elif parser.has_section('coverage:report'):
-            report_section = 'coverage:report'
-
-        paths_section: Optional[str] = None
-        if parser.has_section('paths'):
-            paths_section = 'paths'
-        elif parser.has_section('coverage:paths'):
-            paths_section = 'coverage:paths'
+        run_section = _get_section('run')
+        report_section = _get_section('report')
+        paths_section = _get_section('paths')
 
         # if neither section exists, this isn't a valid config file for us
         if not run_section and not report_section and not paths_section:

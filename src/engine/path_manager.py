@@ -62,7 +62,11 @@ class PathManager:
             if abs_path == excluded or abs_path.startswith(excluded + os.sep):
                 return False
 
-        rel_path = os.path.relpath(abs_path, self.project_root)
+        try:
+            rel_path = os.path.relpath(abs_path, self.project_root)
+        except ValueError:
+            return False
+
         # normalize to forward slashes for consistent pattern matching
         rel_path = rel_path.replace(os.sep, '/')
 
