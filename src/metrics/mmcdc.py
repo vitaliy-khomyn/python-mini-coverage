@@ -32,17 +32,16 @@ class MMCDCCoverage(ConditionCoverage):
     def _analyze_mmcdc(self, global_line_stats: Dict[int, Any], executed_arcs: Set[Tuple[int, int, int]]) -> None:
         """Reconstruct executed paths and verify MMC/DC Independence Pairs."""
         for lineno, stats in global_line_stats.items():
-            ops = stats.get('ops', [])
-            if not ops:
-                continue
+            for decision in stats.get('decisions', []):
+                ops = decision['ops']
+                if not ops:
+                    continue
 
-            # 1. Reconstruct all executed condition vectors
-            executed_paths = BooleanVectorEvaluator.reconstruct_executed_paths(ops, executed_arcs)
+                executed_paths = BooleanVectorEvaluator.reconstruct_executed_paths(ops, executed_arcs)
 
-            # 2. Check Masking MMC/DC pairs for each condition
-            stats['missing'] = []
-            stats['executed'] = [{'vector': list(p), 'result': out} for p, out in executed_paths]
-            stats['conditions'] = len(ops)
-            stats['total'] = len(ops)
+                decision['missing'] = []
+                decision['executed'] = [{'vector': list(p), 'result': out} for p, out in executed_paths]
+                decision['conditions'] = len(ops)
+                decision['total_possible'] = len(ops)
 
-            stats['missing'].extend(BooleanVectorEvaluator.find_missing_mmcdc_pairs(ops, executed_paths))
+                decision['missing'].extend(BooleanVectorEvaluator.find_missing_mmcdc_pairs(ops, executed_paths))
