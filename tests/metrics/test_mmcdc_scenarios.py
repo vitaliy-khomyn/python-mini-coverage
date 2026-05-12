@@ -222,3 +222,17 @@ decision(False, True, True, True, True, True)
 """
         missing = self._run_script(code)
         self.assertIn(3, missing)
+
+    def test_mcdc_while_loop_backward_jump(self):
+        code = """
+def loop_decision(a, b):
+    while a and b:
+        b = False
+    return a
+
+loop_decision(True, True)
+loop_decision(False, True)
+"""
+        missing = self._run_script(code)
+        self.assertIn(3, missing)
+        self.assertEqual(missing[3]['ratio'], "2/2")

@@ -141,3 +141,25 @@ if (a or b) and (c or d) and e:
         code = "if a and b and c and d and e and f:\n    pass"
         conditions = self.get_conditions(code)
         self.assertEqual(len(conditions), 12)
+
+    def test_condition_names_extracted(self):
+        code = "if 1 < x < 10 and is_valid(x):\n    pass"
+        tree = self.parse_code(code)
+        self.metric.set_ast(tree)
+        names = list(self.metric.condition_names.values())[0]
+        self.assertEqual(names, ['1 < x', 'x < 10', 'is_valid(x)'])
+
+    def test_match_case_guard_names(self):
+        if sys.version_info < (3, 10): return
+        code = "match x:\n    case 1 if is_valid(x):\n        pass"
+        tree = self.parse_code(code)
+        self.metric.set_ast(tree)
+        names = list(self.metric.condition_names.values())[0]
+        self.assertEqual(names, ['is_valid(x)'])
+
+    def test_comprehension_names(self):
+        code = "[x for x in items if x > 0 and x < 10]"
+        tree = self.parse_code(code)
+        self.metric.set_ast(tree)
+        names = list(self.metric.condition_names.values())[0]
+        self.assertEqual(names, ['x > 0', 'x < 10'])

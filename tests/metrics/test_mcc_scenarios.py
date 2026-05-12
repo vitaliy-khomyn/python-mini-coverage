@@ -79,3 +79,17 @@ decision(False, False, False) # covers path 5
         self.assertIn(3, missing)
         self.assertEqual(missing[3]['ratio'], "2/5")
         self.assertEqual(len(missing[3]['missing']), 3)
+
+    def test_mcc_while_loop_backward_jump(self):
+        code = """
+def loop_decision(a, b):
+    while a and b:
+        b = False
+    return a
+
+loop_decision(True, True)
+loop_decision(False, True)
+"""
+        missing = self._run_script(code)
+        self.assertIn(3, missing)
+        self.assertEqual(missing[3]['ratio'], "3/3")

@@ -77,10 +77,9 @@ class OutcomeFormatter:
             if item_a['terminal']:
                 continue
             vec_a = item_a['vector']
-            try:
-                stop_idx = vec_a.index("?")
-                prefix_a = vec_a[:stop_idx]
-            except ValueError:
+            if "?" in vec_a:
+                prefix_a = vec_a[:vec_a.index("?")]
+            else:
                 prefix_a = vec_a
 
             for j, item_b in enumerate(raw_items):
