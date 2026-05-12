@@ -112,3 +112,11 @@ class API:
 """
         funcs = self.get_funcs(code)
         self.assertEqual(funcs, {("fetch", 3, 4)})
+
+    def test_function_only_docstring(self):
+        code = """
+def just_doc():
+    "Docstring only"
+"""
+        funcs = self.get_funcs(code)
+        self.assertEqual(funcs, set())

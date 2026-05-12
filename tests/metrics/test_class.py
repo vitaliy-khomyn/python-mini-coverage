@@ -122,3 +122,15 @@ def factory():
 """
         classes = self.get_classes(code)
         self.assertEqual(classes, {("Inner", 3, 5)})
+
+    def test_class_with_init_not_first(self):
+        code = """
+class MyClass:
+    def some_method(self):
+        pass
+
+    def __init__(self):
+        self.a = 1
+"""
+        classes = self.get_classes(code)
+        self.assertEqual(classes, {("MyClass", 2, 7)})

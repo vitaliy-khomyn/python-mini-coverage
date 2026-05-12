@@ -78,3 +78,41 @@ other_func()
         code = "[f(x) for x in items]"
         calls = self.get_calls(code)
         self.assertEqual(calls, {("f", 1)})
+
+    def test_multiline_ternary_calls(self):
+        code = """a = (
+    foo()
+    if condition
+    else bar()
+)"""
+        calls = self.get_calls(code)
+        self.assertEqual(calls, {("foo", 2), ("bar", 4)})
+
+        possible = {("foo", 2), ("bar", 4)}
+        executed_lines = {2}  # only foo() is executed
+        stats = self.metric.calculate_stats(possible, executed_lines)
+
+        self.assertEqual(stats['pct'], 50.0)
+        self.assertEqual(stats['ratio'], "1/2")
+        self.assertEqual(stats['missing'], {("bar", 4)})
+        self.assertEqual(stats['executed'], {("foo", 2)})
+
+    def test_same_line_multiple_calls(self):
+        # Demonstrates current line-based behavior: if both calls are on the same line,
+        # line execution counts as both being executed.
+        code = "a = foo() if condition else bar()"
+        calls = self.get_calls(code)
+        self.assertEqual(calls, {("foo", 1), ("bar", 1)})
+
+        stats = self.metric.calculate_stats(calls, {1})
+        self.assertEqual(stats['pct'], 100.0)
+        self.assertEqual(stats['ratio'], "2/2")
+
+    def test_decorator_call(self):
+        code = """
+@my_decorator(1)
+def func():
+    pass
+"""
+        calls = self.get_calls(code)
+        self.assertEqual(calls, {("my_decorator", 2)})
