@@ -1,6 +1,6 @@
-import os
-import functools
 import fnmatch
+import os
+
 from typing import Set
 from .config import CoverageConfig
 
@@ -10,27 +10,34 @@ class PathManager:
     Centralizes path normalization, canonicalization, and filtering logic.
     """
     def __init__(self, project_root: str, config: CoverageConfig):
+        self._cache = {}
         self.project_root = self.canonicalize(project_root)
         self.config = config
 
-    @staticmethod
-    @functools.lru_cache(maxsize=4096)
-    def canonicalize(path: str) -> str:
+    def canonicalize(self, path: str) -> str:
         """
         Convert a path to its canonical form: absolute, symlinks resolved, case-normalized.
         """
-        # Use realpath to resolve symlinks (crucial for deduplication)
+        if path in self._cache:
+            return self._cache[path]
+
         # Fallback to abspath if file doesn't exist
         if os.path.exists(path):
-            return os.path.normcase(os.path.realpath(path))
+            result = os.path.normcase(os.path.realpath(path))
+            self._cache[path] = result
+            return result
 
         # If file doesn't exist, try to resolve the directory part
         # This ensures that if project_root is realpath'ed, files inside it are too.
         head, tail = os.path.split(os.path.abspath(path))
         if os.path.exists(head):
-            return os.path.normcase(os.path.join(os.path.realpath(head), tail))
+            result = os.path.normcase(os.path.join(os.path.realpath(head), tail))
+            self._cache[path] = result
+            return result
 
-        return os.path.normcase(os.path.abspath(path))
+        result = os.path.normcase(os.path.abspath(path))
+        self._cache[path] = result
+        return result
 
     def map_path(self, path: str) -> str:
         """

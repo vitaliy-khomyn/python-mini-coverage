@@ -103,3 +103,12 @@ class MyClass:
 """
         funcs = self.get_funcs(code)
         self.assertEqual(funcs, {("my_method", 3, 4)})
+
+    def test_async_method(self):
+        code = """
+class API:
+    async def fetch(self):
+        pass
+"""
+        funcs = self.get_funcs(code)
+        self.assertEqual(funcs, {("fetch", 3, 4)})

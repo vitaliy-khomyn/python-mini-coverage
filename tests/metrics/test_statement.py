@@ -112,3 +112,23 @@ y: str
         tree = self.parse_code(code)
         lines = self.metric.get_possible_elements(tree, set())
         self.assertEqual(lines, {1, 2})
+
+    def test_global_nonlocal_ignored(self):
+        code = """
+def func():
+    global x
+    nonlocal y
+    x = 1
+"""
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        # def (2), x=1 (5). Global and nonlocal shouldn't be expected.
+        self.assertEqual(lines, {2, 5})
+
+    def test_match_case_statements(self):
+        if sys.version_info < (3, 10): return
+        code = "match x:\n    case 1:\n        pass"
+        tree = self.parse_code(code)
+        lines = self.metric.get_possible_elements(tree, set())
+        # match(1), case(2), pass(3)
+        self.assertEqual(lines, {1, 2, 3})

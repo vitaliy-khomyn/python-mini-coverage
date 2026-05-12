@@ -113,7 +113,7 @@ class HtmlReporter(BaseReporter):
         try:
             with tokenize.open(filename) as f:
                 source_lines = f.readlines()
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             source_lines = ["Error reading source file."]
 
         code_html = ""

@@ -57,3 +57,15 @@ def f(x):
         stats = self.metric.calculate_stats(set(), set())
         self.assertEqual(stats['pct'], 100.0)
         self.assertEqual(stats['ratio'], "0/0")
+
+    def test_yield_ignored(self):
+        # Yield statements are not explicit Returns and shouldn't be mixed in
+        code = """
+def f():
+    yield 1
+    yield from [2, 3]
+    return 4
+"""
+        returns = self.get_returns(code)
+        # Only the explicit return on line 5 should be mapped
+        self.assertEqual(returns, {5})

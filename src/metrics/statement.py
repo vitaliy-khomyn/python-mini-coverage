@@ -16,8 +16,17 @@ class StatementCoverage(CoverageMetric):
     def get_possible_elements(self, ast_tree: ast.AST, ignored_lines: Set[int]) -> Set[int]:
         executable_lines: Set[int] = set()
         for node in ast.walk(ast_tree):
-            if isinstance(node, ast.stmt):
-                if node.lineno in ignored_lines:
+            is_match_case = type(node).__name__ == 'match_case'
+
+            if isinstance(node, ast.stmt) or is_match_case:
+                # match_case nodes don't have a lineno, but their patterns do
+                node_lineno = getattr(node, 'lineno', getattr(getattr(node, 'pattern', None), 'lineno', -1))
+
+                if node_lineno in ignored_lines:
+                    continue
+
+                # Compiler directives do not generate executable bytecode line events
+                if isinstance(node, (ast.Global, ast.Nonlocal)):
                     continue
 
                 # ignore constants (docstrings, standalone numbers)
@@ -29,6 +38,6 @@ class StatementCoverage(CoverageMetric):
                                                                           getattr(ast, 'Num', type(None)))):
                     continue
 
-                if hasattr(node, 'lineno'):
-                    executable_lines.add(node.lineno)
+                if node_lineno != -1:
+                    executable_lines.add(node_lineno)
         return executable_lines
