@@ -53,7 +53,21 @@ class SysSetTraceTracer(BaseTracer):
                 self.engine._record_line(filename, lineno, cid)
 
             # 2. opcode trace
-            current_lasti = frame.f_lasti
-            self.engine._record_opcode(filename, frame.f_code.co_firstlineno, current_lasti, cid)
+            if event == 'opcode':
+                current_lasti = frame.f_lasti
+                last_lasti = getattr(self.engine.thread_local, 'last_lasti', None)
+                last_code_id = getattr(self.engine.thread_local, 'last_code_id', None)
+                last_file = getattr(self.engine.thread_local, 'last_file', None)
+                code_id = frame.f_code.co_firstlineno
+
+                if last_lasti is not None and last_file == filename and last_code_id == code_id:
+                    if not getattr(self.engine.thread_local, 'current_decision_path', None):
+                        self.engine.thread_local.current_decision_path = []
+                    self.engine.thread_local.current_decision_path.append((last_lasti, current_lasti))
+
+                    if current_lasti <= last_lasti:
+                        self.engine._flush_decision_path(cid)
+
+                self.engine._record_opcode(filename, code_id, current_lasti, cid)
 
         return self.trace_function

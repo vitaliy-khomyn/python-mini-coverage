@@ -68,6 +68,7 @@ class SysMonitoringTracer(BaseTracer):
         filename = code.co_filename
         cid = self.engine._get_current_context_id()
 
+        self.engine._flush_decision_path(cid)
         self.engine._record_line(filename, line_number, cid)
         return None  # keep event enabled
 
@@ -75,4 +76,20 @@ class SysMonitoringTracer(BaseTracer):
         filename = code.co_filename
         cid = self.engine._get_current_context_id()
         self.engine.trace_data.add_instruction_arc(filename, cid, code.co_firstlineno, from_offset, to_offset)
+
+        last_code_id = getattr(self.engine.thread_local, 'last_code_id', None)
+        last_file = getattr(self.engine.thread_local, 'last_file', None)
+
+        if last_file is not None and (last_file != filename or last_code_id != code.co_firstlineno):
+            self.engine._flush_decision_path(cid)
+
+        if not getattr(self.engine.thread_local, 'current_decision_path', None):
+            self.engine.thread_local.current_decision_path = []
+        self.engine.thread_local.current_decision_path.append((from_offset, to_offset))
+
+        if to_offset <= from_offset:
+            self.engine._flush_decision_path(cid)
+
+        self.engine.thread_local.last_file = filename
+        self.engine.thread_local.last_code_id = code.co_firstlineno
         return None

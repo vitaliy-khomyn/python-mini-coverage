@@ -15,7 +15,35 @@ static PyObject* get_context_id(Tracer *self) {
     return PyObject_CallMethod(self->engine, "_get_current_context_id", NULL);
 }
 
+static void flush_decision_path(Tracer *self, PyObject *filename, PyObject *cid, PyObject *code_id) {
+    PyObject *path = PyObject_GetAttrString(self->engine_thread_local, "current_decision_path");
+    if (path && PyList_Check(path) && PyList_Size(path) > 0) {
+        PyObject *path_tuple = PyList_AsTuple(path);
+        PyObject *trace_data = PyObject_GetAttrString(self->engine, "trace_data");
+        PyObject *add_path = PyObject_GetAttrString(trace_data, "add_decision_path");
+        if (add_path) {
+            PyObject_CallFunctionObjArgs(add_path, filename, cid, code_id, path_tuple, NULL);
+            Py_DECREF(add_path);
+        }
+        Py_DECREF(trace_data);
+        Py_DECREF(path_tuple);
+        PyList_SetSlice(path, 0, PyList_Size(path), NULL);
+    }
+    Py_XDECREF(path);
+}
+
 static int handle_call_or_return(Tracer *self, PyFrameObject *frame, int what) {
+    PyObject *last_file = PyObject_GetAttrString(self->engine_thread_local, "last_file");
+    PyObject *last_code_id = PyObject_GetAttrString(self->engine_thread_local, "last_code_id");
+    PyObject *cid = get_context_id(self);
+    
+    if (last_file && last_code_id && cid && last_file != Py_None && last_code_id != Py_None) {
+        flush_decision_path(self, last_file, cid, last_code_id);
+    }
+    Py_XDECREF(last_file);
+    Py_XDECREF(last_code_id);
+    Py_XDECREF(cid);
+
     if (what == PyTrace_CALL) {
         if (PyObject_SetAttrString((PyObject*)frame, "f_trace_opcodes", Py_True) < 0) {
             return -1;
@@ -25,6 +53,7 @@ static int handle_call_or_return(Tracer *self, PyFrameObject *frame, int what) {
     if (PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None) < 0) return -1;
     if (PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None) < 0) return -1;
     if (PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None) < 0) return -1;
+    if (PyObject_SetAttrString(self->engine_thread_local, "last_code_id", Py_None) < 0) return -1;
     return 0;
 }
 
@@ -87,6 +116,7 @@ static int trace_logic(Tracer *self, PyFrameObject *frame, int what, PyObject *a
         PyObject_SetAttrString(self->engine_thread_local, "last_line", Py_None);
         PyObject_SetAttrString(self->engine_thread_local, "last_file", Py_None);
         PyObject_SetAttrString(self->engine_thread_local, "last_lasti", Py_None);
+        PyObject_SetAttrString(self->engine_thread_local, "last_code_id", Py_None);
     }
 
     if (what == PyTrace_LINE) {
@@ -166,31 +196,51 @@ static int handle_opcode_event(Tracer *self, PyFrameObject *frame, PyObject *fil
 
     PyObject *last_lasti = PyObject_GetAttrString(self->engine_thread_local, "last_lasti");
     PyObject *last_file_op = PyObject_GetAttrString(self->engine_thread_local, "last_file");
+    PyObject *last_code_id = PyObject_GetAttrString(self->engine_thread_local, "last_code_id");
 
-    if (last_lasti && last_file_op && last_lasti != Py_None && last_file_op != Py_None) {
+    if (last_lasti && last_file_op && last_code_id && last_lasti != Py_None && last_file_op != Py_None && last_code_id != Py_None) {
         int cmp = PyObject_RichCompareBool(last_file_op, filename, Py_EQ);
-        if (cmp == 1) {
+        int cmp_code = PyObject_RichCompareBool(last_code_id, co_firstlineno, Py_EQ);
+        if (cmp == 1 && cmp_code == 1) {
             PyObject *file_instr_dict = PyObject_GetItem(self->trace_data_instr_arcs, filename);
             if (file_instr_dict) {
                 PyObject *instr_set = PyObject_GetItem(file_instr_dict, cid);
                 if (instr_set) {
-                    PyObject *arc = PyTuple_Pack(3, co_firstlineno, last_lasti, current_lasti);
+                    PyObject *arc = PyTuple_Pack(3, last_code_id, last_lasti, current_lasti);
                     PySet_Add(instr_set, arc);
                     Py_DECREF(arc);
                     Py_DECREF(instr_set);
                 }
                 Py_DECREF(file_instr_dict);
             }
+        
+            PyObject *path = PyObject_GetAttrString(self->engine_thread_local, "current_decision_path");
+            if (!path || path == Py_None) {
+                Py_XDECREF(path);
+                path = PyList_New(0);
+                PyObject_SetAttrString(self->engine_thread_local, "current_decision_path", path);
+            }
+            PyObject *arc = PyTuple_Pack(2, last_lasti, current_lasti);
+            PyList_Append(path, arc);
+            Py_DECREF(arc);
+            Py_DECREF(path);
+
+            // Flush after appending backward jump to properly terminate loops
+            if (PyLong_AsLong(current_lasti) <= PyLong_AsLong(last_lasti)) {
+                flush_decision_path(self, last_file_op, cid, last_code_id);
+            }
         }
     }
     Py_XDECREF(last_lasti);
     Py_XDECREF(last_file_op);
-    Py_XDECREF(co_firstlineno);
+    Py_XDECREF(last_code_id);
 
     // update state
     PyObject_SetAttrString(self->engine_thread_local, "last_lasti", current_lasti);
     PyObject_SetAttrString(self->engine_thread_local, "last_file", filename);
+    PyObject_SetAttrString(self->engine_thread_local, "last_code_id", co_firstlineno);
 
+    Py_DECREF(co_firstlineno);
     Py_DECREF(current_lasti);
     return 0;
 }

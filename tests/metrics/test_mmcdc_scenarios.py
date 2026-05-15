@@ -106,12 +106,12 @@ decision(False, True, False)
         self.assertEqual(cond_stats[3]['ratio'], "4/4", "Condition Coverage should be 100%")
         self.assertEqual(len(cond_stats[3]['missing']), 0)
 
-        # NOTE: Because MiniCoverage aggregates execution data as a flat set of edges (arcs),
-        # when 100% Edge Coverage is achieved, the CFG reconstructor synthesizes all possible
-        # paths. Therefore, MMC/DC pairing will find valid pairs synthesized from independent runs,
-        # resulting in an over-approximation of 3/3 conditions covered.
-        self.assertEqual(mcdc_stats[3]['ratio'], "3/3")
-        self.assertEqual(len(mcdc_stats[3]['missing']), 0)
+        # With True Contiguous Path tracing, MMC/DC correctly sees that condition 1 ('a')
+        # is not proven because condition 3 ('c') changes simultaneously between the 
+        # independent tests for 'a'.
+        self.assertEqual(mcdc_stats[3]['ratio'], "2/3")
+        self.assertEqual(len(mcdc_stats[3]['missing']), 1)
+        self.assertIn("Condition 1 independent effect not proven", mcdc_stats[3]['missing'][0]['message'])
 
     def test_instrumentation_does_not_double_evaluate(self):
         code = """

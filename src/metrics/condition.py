@@ -4,7 +4,7 @@ import dis
 import sys
 import types
 
-from typing import Set, Tuple, Optional, Dict, Any, List
+from typing import Set, Tuple, Optional, Dict, Any, List, Callable
 
 from .base import CoverageMetric, StaticSourceType
 from .boolean_vector import BooleanVectorEvaluator
@@ -283,7 +283,7 @@ class ConditionCoverage(CoverageMetric):
         return StaticSourceType.CODE_OBJECT
 
     def get_required_dynamic_data(self) -> TraceDataType:
-        return TraceDataType.INSTRUCTION_ARCS
+        return TraceDataType.DECISION_PATHS
 
     def set_ast(self, tree: ast.AST) -> None:
         self.valid_condition_lines = set()
@@ -383,7 +383,24 @@ class ConditionCoverage(CoverageMetric):
             if isinstance(const, types.CodeType):
                 self._analyze_boolean_jumps(const, arcs)
 
-    def map_missing_arcs(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
+    def calculate_stats(self, possible_elements: Set[Any], executed_data: Set[Any], key: Optional[Callable[[Any], Any]] = None) -> Dict[str, Any]:
+        executed_arcs = {(code_id, frm, to) for code_id, path in executed_data for frm, to in path}
+        hit = possible_elements.intersection(executed_arcs)
+        missing = possible_elements - hit
+
+        pct = (len(hit) / len(possible_elements)) * 100 if possible_elements else 100.0
+        ratio = f"{len(hit)}/{len(possible_elements)}"
+
+        return {
+            'pct': pct,
+            'missing': missing,
+            'executed': hit,
+            'possible': possible_elements,
+            'ratio': ratio,
+            'paths': executed_data
+        }
+
+    def map_missing_arcs(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_paths_data: Set[Tuple[int, Tuple[Tuple[int, int], ...]]]) -> Dict[int, Any]:
         """
         Map missing bytecode arcs to source line numbers with human-readable labels.
         Returns: {lineno: {'missing': [{'vector': '...', 'terminal': bool}], 'ratio': '3/4'}}
@@ -396,7 +413,7 @@ class ConditionCoverage(CoverageMetric):
             return {}
 
         self._collect_line_ops(code_obj, global_line_stats)
-        self._analyze_line_ops(global_line_stats, missing_arcs, executed_arcs)
+        self._analyze_line_ops(global_line_stats, missing_arcs, executed_paths_data)
 
         return OutcomeFormatter.format_line_outcomes(global_line_stats, filter_redundant=True)
 
@@ -452,7 +469,7 @@ class ConditionCoverage(CoverageMetric):
             if isinstance(const, types.CodeType):
                 self._collect_line_ops(const, line_stats)
 
-    def _analyze_line_ops(self, global_line_stats: Dict[int, Any], missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> None:
+    def _analyze_line_ops(self, global_line_stats: Dict[int, Any], missing_arcs: Set[Tuple[int, int, int]], executed_paths_data: Set[Tuple[int, Tuple[Tuple[int, int], ...]]]) -> None:
         """Analyze grouped line operations to construct and identify missing and executed boolean vectors."""
         for lineno, stats in global_line_stats.items():
             for decision in stats.get('decisions', []):
@@ -461,15 +478,15 @@ class ConditionCoverage(CoverageMetric):
                 decision['executed'] = []
                 decision['conditions'] = len(ops)
 
-                executed_paths = BooleanVectorEvaluator.reconstruct_executed_paths(ops, executed_arcs)
+                executed_paths = BooleanVectorEvaluator.extract_executed_paths(ops, executed_paths_data)
 
                 for p, out in executed_paths:
                     decision['executed'].append({'vector': list(p), 'result': out})
 
                 decision['missing'].extend(BooleanVectorEvaluator.find_missing_condition_arcs(ops, missing_arcs))
 
-    def _evaluate_outcomes(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
-        return self.map_missing_arcs(code_obj, missing_arcs, executed_arcs)
+    def _evaluate_outcomes(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_paths_data: Set[Tuple[int, Tuple[Tuple[int, int], ...]]]) -> Dict[int, Any]:
+        return self.map_missing_arcs(code_obj, missing_arcs, executed_paths_data)
 
     def post_process(self, stats: Dict[str, Any], static_source: Any, executed_data: Set[Any]) -> None:
         """
@@ -480,5 +497,5 @@ class ConditionCoverage(CoverageMetric):
         if not code_obj or not isinstance(code_obj, types.CodeType):
             return
 
-        missing_outcomes = self._evaluate_outcomes(code_obj, stats['missing'], executed_data)
+        missing_outcomes = self._evaluate_outcomes(code_obj, stats['missing'], stats.get('paths', set()))
         OutcomeFormatter.format_global_stats(stats, missing_outcomes)

@@ -35,6 +35,7 @@ class CoverageStorage:
         cur.execute(queries.INIT_LINES)
         cur.execute(queries.INIT_ARCS)
         cur.execute(queries.INIT_INSTRUCTION_ARCS)
+        cur.execute(queries.INIT_DECISION_PATHS)
 
         conn.commit()
         cur.close()
@@ -83,6 +84,15 @@ class CoverageStorage:
                         instr_data.append((file, cid, code_id, start, end))
             cur.executemany(queries.INSERT_INSTRUCTION_ARC, instr_data)
 
+            # batch insert decision paths
+            path_data = []
+            for file, ctx_map in trace_data[TraceDataType.DECISION_PATHS].items():
+                for cid, paths in ctx_map.items():
+                    for code_id, path_tuple in paths:
+                        path_str = ",".join(f"{f}->{t}" for f, t in path_tuple)
+                        path_data.append((file, cid, code_id, path_str))
+            cur.executemany(queries.INSERT_DECISION_PATH, path_data)
+
             conn.commit()
             cur.close()
             conn.close()
@@ -114,6 +124,9 @@ class CoverageStorage:
 
             # merge instruction arcs
             cur.execute(queries.MERGE_INSTRUCTION_ARCS.format(alias=alias))
+
+            # merge decision paths
+            cur.execute(queries.MERGE_DECISION_PATHS.format(alias=alias))
 
             conn.commit()
             cur.execute(f"DETACH DATABASE {alias}")
@@ -163,6 +176,13 @@ class CoverageStorage:
             cur.execute(queries.SELECT_INSTRUCTION_ARCS)
             for file, code_id, start, end in cur.fetchall():
                 trace_data[TraceDataType.INSTRUCTION_ARCS][path_manager.canonicalize(file)][0].add((code_id, start, end))
+
+            cur.execute(queries.SELECT_DECISION_PATHS)
+            for file, code_id, path_str in cur.fetchall():
+                if not path_str:
+                    continue
+                path_tuple = tuple(tuple(map(int, part.split("->"))) for part in path_str.split(","))
+                trace_data[TraceDataType.DECISION_PATHS][path_manager.canonicalize(file)][0].add((code_id, path_tuple))
 
             cur.close()
             conn.close()

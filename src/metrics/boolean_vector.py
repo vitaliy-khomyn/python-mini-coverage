@@ -36,34 +36,42 @@ class BooleanVectorEvaluator:
             stack.append((op_idx + 1, tuple(new_vec)))
 
     @staticmethod
-    def reconstruct_executed_paths(ops: List[Dict[str, Any]], executed_arcs: Set[Tuple[int, int, int]]) -> Set[Tuple[Tuple[str, ...], str]]:
-        """Reconstruct the executed condition outcome vectors by traversing the instruction CFG via DFS."""
-        executed_paths = set()
-        stack = [(0, tuple(["-"] * len(ops)))]
-        visited = set()
+    def extract_executed_paths(ops: List[Dict[str, Any]], executed_paths_data: Set[Tuple[int, Tuple[Tuple[int, int], ...]]]) -> Set[Tuple[Tuple[str, ...], str]]:
+        """Extract the exact boolean vectors executed by tracing contiguous dynamic path sequences."""
+        op_offsets = {op['instr'].offset: i for i, op in enumerate(ops)}
+        executed_vectors = set()
 
-        while stack:
-            op_idx, vec = stack.pop()
-            if (op_idx, vec) in visited:
+        if not ops:
+            return executed_vectors
+
+        target_code_id = ops[0]['code_id']
+
+        for code_id, path in executed_paths_data:
+            if code_id != target_code_id:
                 continue
-            visited.add((op_idx, vec))
 
-            if op_idx >= len(ops):
-                continue
+            vec = ["-"] * len(ops)
+            last_val = None
+            has_ops = False
 
-            op_data = ops[op_idx]
-            instr, code_id = op_data['instr'], op_data['code_id']
-            target = int(instr.argval)
-            jump_val, fall_val = BooleanVectorEvaluator.get_branch_labels(instr.opname)
+            for frm, to in path:
+                if frm in op_offsets:
+                    has_ops = True
+                    op_idx = op_offsets[frm]
+                    op_data = ops[op_idx]
+                    jump_val, fall_val = BooleanVectorEvaluator.get_branch_labels(op_data['instr'].opname)
 
-            if (code_id, instr.offset, target) in executed_arcs:
-                BooleanVectorEvaluator._process_jump(op_idx, vec, ops, jump_val, stack, executed_paths)
+                    if to == int(op_data['instr'].argval):
+                        vec[op_idx] = jump_val
+                        last_val = jump_val
+                    else:
+                        vec[op_idx] = fall_val
+                        last_val = fall_val
 
-            next_offset = op_data['next_offset']
-            if next_offset is not None and (code_id, instr.offset, next_offset) in executed_arcs:
-                BooleanVectorEvaluator._process_fallthrough(op_idx, vec, ops, fall_val, stack, executed_paths)
+            if has_ops and last_val is not None:
+                executed_vectors.add((tuple(vec), last_val))
 
-        return executed_paths
+        return executed_vectors
 
     @staticmethod
     def get_all_possible_paths(ops: List[Dict[str, Any]]) -> Set[Tuple[Tuple[str, ...], str]]:
@@ -118,7 +126,7 @@ class BooleanVectorEvaluator:
         """Find variables that fail to prove their independent effect on the outcome (Masking MC/DC)."""
         missing = []
         possible_paths = BooleanVectorEvaluator.get_all_possible_paths(ops)
-        
+
         for i in range(len(ops)):
             pair_found = False
             for p1, out1 in executed_paths:
@@ -146,7 +154,7 @@ class BooleanVectorEvaluator:
                                 break
                     if suggestion_found:
                         break
-                
+
                 msg = f"Condition {i+1} independent effect not proven."
                 if suggestion:
                     msg += f" {suggestion}"

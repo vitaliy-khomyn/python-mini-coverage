@@ -16,28 +16,28 @@ class MMCDCCoverage(ConditionCoverage):
     def get_name(self) -> str:
         return "MMC/DC"
 
-    def _evaluate_outcomes(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
-        return self.evaluate_mmcdc(code_obj, executed_arcs)
+    def _evaluate_outcomes(self, code_obj: types.CodeType, missing_arcs: Set[Tuple[int, int, int]], executed_paths_data: Set[Tuple[int, Tuple[Tuple[int, int], ...]]]) -> Dict[int, Any]:
+        return self.evaluate_mmcdc(code_obj, executed_paths_data)
 
-    def evaluate_mmcdc(self, code_obj: types.CodeType, executed_arcs: Set[Tuple[int, int, int]]) -> Dict[int, Any]:
+    def evaluate_mmcdc(self, code_obj: types.CodeType, executed_paths_data: Set[Tuple[int, Tuple[Tuple[int, int], ...]]]) -> Dict[int, Any]:
         global_line_stats = collections.defaultdict(lambda: {'total': 0, 'missing': [], 'executed': [], 'conditions': 0})
         if not code_obj:
             return {}
 
         self._collect_line_ops(code_obj, global_line_stats)
-        self._analyze_mmcdc(global_line_stats, executed_arcs)
+        self._analyze_mmcdc(global_line_stats, executed_paths_data)
 
         return OutcomeFormatter.format_line_outcomes(global_line_stats, filter_redundant=False)
 
-    def _analyze_mmcdc(self, global_line_stats: Dict[int, Any], executed_arcs: Set[Tuple[int, int, int]]) -> None:
-        """Reconstruct executed paths and verify MMC/DC Independence Pairs."""
+    def _analyze_mmcdc(self, global_line_stats: Dict[int, Any], executed_paths_data: Set[Tuple[int, Tuple[Tuple[int, int], ...]]]) -> None:
+        """Extract executed paths and verify MMC/DC Independence Pairs."""
         for lineno, stats in global_line_stats.items():
             for decision in stats.get('decisions', []):
                 ops = decision['ops']
                 if not ops:
                     continue
 
-                executed_paths = BooleanVectorEvaluator.reconstruct_executed_paths(ops, executed_arcs)
+                executed_paths = BooleanVectorEvaluator.extract_executed_paths(ops, executed_paths_data)
 
                 decision['missing'] = []
                 decision['executed'] = [{'vector': list(p), 'result': out} for p, out in executed_paths]

@@ -218,10 +218,21 @@ class MiniCoverage:
         Resets thread-local history to prevent arcs between unrelated functions.
         Called by tracers on function entry events ('call', 'PY_START', 'PY_RESUME').
         """
+        cid = self._get_current_context_id()
+        self._flush_decision_path(cid)
         self.thread_local.last_line = None
         self.thread_local.last_lasti = None
         self.thread_local.last_file = None
         self.thread_local.last_code_id = None
+
+    def _flush_decision_path(self, cid: int) -> None:
+        path = getattr(self.thread_local, 'current_decision_path', None)
+        last_file = getattr(self.thread_local, 'last_file', None)
+        last_code_id = getattr(self.thread_local, 'last_code_id', None)
+
+        if path and last_file and last_code_id is not None:
+            self.trace_data.add_decision_path(last_file, cid, last_code_id, tuple(path))
+            path.clear()
 
     def save_data(self) -> None:
         """
@@ -292,6 +303,10 @@ class MiniCoverage:
             self.sys_monitoring_tracer.stop()
 
         self.sys_settrace_tracer.stop()
+
+        cid = self._get_current_context_id()
+        self._flush_decision_path(cid)
+
         self.save_data()
 
     def _record_line(self, filename: str, lineno: int, cid: int) -> None:

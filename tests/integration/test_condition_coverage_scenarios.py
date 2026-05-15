@@ -55,11 +55,11 @@ full_condition(True, False, False)
 
         # Analyze results
         canonical_path = cov.path_manager.canonicalize(script_path)
-        executed_arcs = set()
-        for raw_path, ctx_map in cov.trace_data[TraceDataType.INSTRUCTION_ARCS].items():
+        executed_paths = set()
+        for raw_path, ctx_map in cov.trace_data[TraceDataType.DECISION_PATHS].items():
             if cov.path_manager.canonicalize(raw_path) == canonical_path:
-                for arcs in ctx_map.values():
-                    executed_arcs.update(arcs)
+                for paths in ctx_map.values():
+                    executed_paths.update(paths)
 
         # Compile to get code objects
         co = compile(code, script_path, 'exec')
@@ -71,7 +71,7 @@ full_condition(True, False, False)
 
         metric = ConditionCoverage()
         possible = metric.get_possible_elements(func_code)
-        stats = metric.calculate_stats(possible, executed_arcs)
+        stats = metric.calculate_stats(possible, executed_paths)
 
         self.assertEqual(stats['pct'], 100.0,
                          f"Expected 100% Condition Coverage for minimal set, got {stats['pct']}%")
@@ -103,11 +103,11 @@ partial_condition(True, False, False)
 
         # Analyze results
         canonical_path = cov.path_manager.canonicalize(script_path)
-        executed_arcs = set()
-        for raw_path, ctx_map in cov.trace_data[TraceDataType.INSTRUCTION_ARCS].items():
+        executed_paths = set()
+        for raw_path, ctx_map in cov.trace_data[TraceDataType.DECISION_PATHS].items():
             if cov.path_manager.canonicalize(raw_path) == canonical_path:
-                for arcs in ctx_map.values():
-                    executed_arcs.update(arcs)
+                for paths in ctx_map.values():
+                    executed_paths.update(paths)
 
         # Compile to get code objects
         co = compile(code, script_path, 'exec')
@@ -119,11 +119,11 @@ partial_condition(True, False, False)
 
         metric = ConditionCoverage()
         possible = metric.get_possible_elements(func_code)
-        stats = metric.calculate_stats(possible, executed_arcs)
+        stats = metric.calculate_stats(possible, executed_paths)
 
         self.assertLess(stats['pct'], 100.0, "Partial set should not have 100% coverage")
 
-        missing_map = metric.map_missing_arcs(func_code, stats['missing'], executed_arcs)
+        missing_map = metric.map_missing_arcs(func_code, stats['missing'], executed_paths)
 
         # Extract vectors from the detailed stats structure returned by map_missing_arcs
         missing_vectors = [m['vector'] for line_stats in missing_map.values() for m in line_stats.get('missing', [])]

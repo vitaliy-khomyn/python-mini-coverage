@@ -25,7 +25,8 @@ class Analyzer:
         all_raw_files = (
             set(trace_data[TraceDataType.LINES].keys()) |
             set(trace_data[TraceDataType.ARCS].keys()) |
-            set(trace_data[TraceDataType.INSTRUCTION_ARCS].keys())
+            set(trace_data[TraceDataType.INSTRUCTION_ARCS].keys()) |
+            set(trace_data[TraceDataType.DECISION_PATHS].keys())
         )
         for f in all_raw_files:
             file_map[self.path_manager.canonicalize(f)].append(f)
@@ -36,7 +37,8 @@ class Analyzer:
         aggregated = {
             TraceDataType.LINES: set(),
             TraceDataType.ARCS: set(),
-            TraceDataType.INSTRUCTION_ARCS: set()
+            TraceDataType.INSTRUCTION_ARCS: set(),
+            TraceDataType.DECISION_PATHS: set()
         }
         for key in aggregated.keys():
             for rf in raw_files:
