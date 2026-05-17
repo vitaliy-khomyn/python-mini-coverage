@@ -230,12 +230,24 @@ class ConditionNameExtractor(ast.NodeVisitor):
         self.generic_visit(node)
         self._exit_scope()
 
+    def visit_Call(self, node: ast.Call) -> None:
+        # Detect any() and all() optimizations which inject an implicit truthiness jump
+        if isinstance(node.func, ast.Name) and node.func.id in ('any', 'all'):
+            if node.args and isinstance(node.args[0], ast.GeneratorExp):
+                gen_lineno = getattr(node.args[0].elt, 'lineno', getattr(node, 'lineno', -1))
+                self.names[(gen_lineno, self.code_id_stack[-1])].append(f"Implicit {node.func.id}() check")
+
+        self.generic_visit(node)
+
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         self._visit_comprehension(node)
+
     def visit_ListComp(self, node: ast.ListComp) -> None:
         self._visit_comprehension(node)
+
     def visit_SetComp(self, node: ast.SetComp) -> None:
         self._visit_comprehension(node)
+
     def visit_DictComp(self, node: ast.DictComp) -> None:
         self._visit_comprehension(node)
 

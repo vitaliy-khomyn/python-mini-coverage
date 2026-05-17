@@ -75,7 +75,10 @@ class ConditionFormatter(BaseFormatter):
 
                     header_cols = ""
                     for i in range(conditions_count):
-                        name = condition_names[i] if i < len(condition_names) else f"Cond {i+1}"
+                        if i < len(condition_names):
+                            name = condition_names[i]
+                        else:
+                            name = f"Implicit Jump {i + 1 - len(condition_names)}"
                         header_cols += f"<th>{html.escape(name)}</th>"
                     header_cols += "<th>Result</th>"
                     header_row = f"<tr>{header_cols}</tr>"

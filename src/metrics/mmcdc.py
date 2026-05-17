@@ -44,4 +44,4 @@ class MMCDCCoverage(ConditionCoverage):
                 decision['conditions'] = len(ops)
                 decision['total_possible'] = len(ops)
 
-                decision['missing'].extend(BooleanVectorEvaluator.find_missing_mmcdc_pairs(ops, executed_paths))
+                decision['missing'].extend(BooleanVectorEvaluator.find_missing_mmcdc_pairs(ops, executed_paths, decision.get('condition_names')))

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Set, Tuple
+from typing import List, Dict, Any, Set, Tuple, Optional
 
 
 class BooleanVectorEvaluator:
@@ -122,7 +122,7 @@ class BooleanVectorEvaluator:
         return missing
 
     @staticmethod
-    def find_missing_mmcdc_pairs(ops: List[Dict[str, Any]], executed_paths: Set[Tuple[Tuple[str, ...], str]]) -> List[Dict[str, Any]]:
+    def find_missing_mmcdc_pairs(ops: List[Dict[str, Any]], executed_paths: Set[Tuple[Tuple[str, ...], str]], condition_names: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Find variables that fail to prove their independent effect on the outcome (Masking MC/DC)."""
         missing = []
         possible_paths = BooleanVectorEvaluator.get_all_possible_paths(ops)
@@ -155,7 +155,14 @@ class BooleanVectorEvaluator:
                     if suggestion_found:
                         break
 
-                msg = f"Condition {i+1} independent effect not proven."
+                if condition_names and i < len(condition_names):
+                    name_str = f"'{condition_names[i]}'"
+                elif condition_names:
+                    name_str = f"'Implicit Jump {i + 1 - len(condition_names)}'"
+                else:
+                    name_str = f"Condition {i+1}"
+
+                msg = f"{name_str} independent effect not proven."
                 if suggestion:
                     msg += f" {suggestion}"
                 missing.append({'message': msg, 'terminal': True})

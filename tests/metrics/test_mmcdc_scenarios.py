@@ -60,7 +60,7 @@ decision(True, True)   # A=T, B=T -> True
         # Therefore, condition 1 ('a') should be missing MC/DC.
         # Condition 2 ('b') changed from F to T, outcome changed F to T. It is covered.
         self.assertEqual(len(missing[3]['missing']), 1)
-        self.assertIn("Condition 1", missing[3]['missing'][0]['message'])
+        self.assertIn("'a'", missing[3]['missing'][0]['message'])
         self.assertEqual(missing[3]['ratio'], "1/2")
 
     def test_mcdc_vs_condition_coverage(self):
@@ -107,11 +107,51 @@ decision(False, True, False)
         self.assertEqual(len(cond_stats[3]['missing']), 0)
 
         # With True Contiguous Path tracing, MMC/DC correctly sees that condition 1 ('a')
-        # is not proven because condition 3 ('c') changes simultaneously between the 
+        # is not proven because condition 3 ('c') changes simultaneously between the
         # independent tests for 'a'.
         self.assertEqual(mcdc_stats[3]['ratio'], "2/3")
         self.assertEqual(len(mcdc_stats[3]['missing']), 1)
-        self.assertIn("Condition 1 independent effect not proven", mcdc_stats[3]['missing'][0]['message'])
+        self.assertIn("'a' independent effect not proven", mcdc_stats[3]['missing'][0]['message'])
+
+    def test_mcdc_100_percent_achievable(self):
+        """
+        Demonstrates that by providing the correct independence pairs,
+        the exact same decision from the previous test can achieve 100% MC/DC.
+        """
+        code = """
+def decision(a, b, c):
+    if (a or b) and c:
+        return True
+    return False
+
+# Pair for A:
+decision(True, False, True)   # Vector: [T, -, T] -> True
+decision(False, False, True)  # Vector: [F, F, -] -> False
+
+# Pair for B:
+decision(False, True, True)   # Vector: [F, T, T] -> True
+# decision(False, False, True) from above acts as the False outcome for B
+
+# Pair for C:
+# decision(False, True, True) from above acts as the True outcome for C
+decision(False, True, False)  # Vector: [F, T, F] -> False
+"""
+        script_path = os.path.join(self.test_dir, "mcdc_100.py")
+        with open(script_path, "w") as f:
+            f.write(code)
+
+        cov = MiniCoverage(project_root=self.test_dir)
+        cov.run(script_path)
+        results = cov.analyze()
+        canonical = cov.path_manager.canonicalize(script_path)
+
+        cond_stats = results[canonical].get('Condition', {}).get('missing_outcomes', {})
+        mcdc_stats = results[canonical].get('MMC/DC', {}).get('missing_outcomes', {})
+
+        self.assertEqual(cond_stats[3]['ratio'], "4/4", "Condition Coverage should still be 100%")
+
+        self.assertEqual(mcdc_stats[3]['ratio'], "3/3", "MC/DC should now be 100% with valid pairs")
+        self.assertEqual(len(mcdc_stats[3]['missing']), 0)
 
     def test_instrumentation_does_not_double_evaluate(self):
         code = """
