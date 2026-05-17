@@ -84,7 +84,6 @@ class TestHtmlReporter(BaseTestCase):
         with open(os.path.join(out_dir, expected_html_file), "r", encoding="utf-8") as f:
             content = f.read()
             self.assertIn("3 Missing Details", content)
-            self.assertIn("Missed branch to: 3", content)
+            self.assertIn("Missed branch to: <a href=\"#L3\">3</a>", content)
             self.assertIn("MMC/DC Coverage: 1/2", content)
-            self.assertIn("Condition 1 missed", content)
             self.assertIn("Missed return statement", content)

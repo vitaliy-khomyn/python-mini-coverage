@@ -156,34 +156,45 @@ def render_file(filename: str, code_html: str) -> str:
         .header a {{ text-decoration: none; color: #495057; font-weight: 500; border: 1px solid #ced4da; padding: 6px 12px; border-radius: 4px; transition: all 0.2s; background: #f8f9fa; font-size: 0.9em; }}
         .header a:hover {{ background: #e9ecef; color: #212529; }}
         .header strong {{ font-family: monospace; font-size: 1.1em; color: #343a40; }}
-        
+
         .code-container {{ background: #fff; margin: 20px; border-radius: 8px; border: 1px solid #dee2e6; box-shadow: 0 2px 5px rgba(0,0,0,0.05); overflow: hidden; }}
         .line {{ display: flex; align-items: stretch; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 14px; line-height: 1.6; border-bottom: 1px solid #f1f3f5; }}
         .line:last-child {{ border-bottom: none; }}
-        
+
         .lineno {{ width: 50px; min-width: 50px; text-align: right; padding-right: 15px; color: #adb5bd; background: #f8f9fa; border-right: 1px solid #dee2e6; user-select: none; padding-top: 2px; padding-bottom: 2px; }}
         .code-content {{ flex: 1; padding-left: 15px; padding-top: 2px; padding-bottom: 2px; white-space: pre-wrap; word-break: break-all; position: relative; }}
-        
+
         .hit {{ background-color: #e6f4ea; }}
         .miss {{ background-color: #fce4e4; }}
         .partial {{ background-color: #fff8e1; }}
-        
+
         .hit .lineno {{ background-color: #d4edda; color: #155724; border-right-color: #c3e6cb; }}
         .miss .lineno {{ background-color: #f8d7da; color: #721c24; border-right-color: #f5c6cb; }}
         .partial .lineno {{ background-color: #fff3cd; color: #856404; border-right-color: #ffeeba; }}
-        
+
         .annotation-toggle {{ color: #fff; background-color: #dc3545; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; cursor: pointer; font-weight: bold; white-space: nowrap; margin-left: 15px; vertical-align: middle; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; transition: background-color 0.2s; display: inline-block; }}
         .annotation-toggle:hover {{ background-color: #c82333; }}
         .partial .annotation-toggle {{ background-color: #ffc107; color: #212529; }}
         .partial .annotation-toggle:hover {{ background-color: #e0a800; }}
-        
+
         .annotation-details {{ display: none; margin-top: 8px; margin-bottom: 5px; padding: 10px; background-color: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; white-space: normal; font-size: 0.9em; border-radius: 0 4px 4px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+        .annotation-toggle.inline-detail {{ cursor: default; }}
+        .annotation-divider {{ border: none; border-top: 1px dashed #dc3545; margin: 8px 0; }}
+        .partial .annotation-divider {{ border-top-color: #ffc107; }}
+
+        .suggestion-pair {{ margin-top: 10px; }}
+        .suggestion-header {{ font-size: 0.9em; font-weight: bold; color: #495057; margin-bottom: 5px; }}
+        .suggestion-tile {{ display: flex; align-items: center; gap: 10px; background: #f1f3f5; padding: 5px 8px; border-radius: 4px; margin-bottom: 5px; }}
+        .suggestion-vector {{ font-family: monospace; }}
+        .suggestion-outcome {{ font-weight: bold; }}
+        .suggestion-conjunction {{ margin-left: 10px; font-style: italic; color: #6c757d; }}
+
         .partial .annotation-details {{ background-color: #fff3cd; color: #856404; border-left-color: #ffc107; }}
-        
+
         .line.has-details .code-content {{ cursor: pointer; }}
         .line.open .annotation-details {{ display: block; }}
-        
-        .condition-table {{ width: 100%; border-collapse: collapse; font-size: 0.9em; margin-top: 8px; border: 1px solid #dee2e6; background: #fff; }}
+
+        .condition-table {{ width: auto; border-collapse: collapse; font-size: 0.9em; margin-top: 8px; border: 1px solid #dee2e6; background: #fff; }}
         .condition-table th, .condition-table td {{ border: 1px solid #dee2e6; padding: 6px 10px; text-align: left; color: #212529; }}
         .condition-table th {{ background-color: #f8f9fa; font-weight: 600; color: #495057; }}
         .condition-table tr.hit td {{ background-color: #e6f4ea; }}
@@ -211,18 +222,24 @@ def render_file(filename: str, code_html: str) -> str:
 """
 
 
-def render_code_line(lineno: int, content: str, css_class: str, toggle_text: Optional[str] = None, details_html: Optional[str] = None) -> str:
+def render_code_line(lineno: int, content: str, css_class: str, toggle_text: Optional[str] = None, details_html: Optional[str] = None, inline_detail: Optional[str] = None) -> str:
     # content is already escaped
     extra_attrs = ""
-    if details_html:
+    has_details_popup = bool(details_html)
+
+    if has_details_popup:
         css_class += " has-details"
         extra_attrs = ' onclick="toggleDetails(this, event)"'
 
-    line_div = f'<div class="line {css_class}"{extra_attrs}>'
+    # The line div itself needs an ID for branch links
+    line_div = f'<div class="line {css_class}" id="L{lineno}"{extra_attrs}>'
     line_div += f'<div class="lineno">{lineno}</div>'
     line_div += f'<div class="code-content">{content}'
 
-    if toggle_text:
+    if inline_detail:
+        # Render simple text directly, no popup
+        line_div += f"<span class='annotation-toggle inline-detail'>{inline_detail}</span>"
+    elif toggle_text:
         line_div += f"<span class='annotation-toggle'>{toggle_text}</span>"
 
     if details_html:

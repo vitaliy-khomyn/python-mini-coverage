@@ -141,15 +141,16 @@ class BooleanVectorEvaluator:
                     break
 
             if not pair_found:
-                suggestion = ""
+                suggestion: Dict[str, Any] = {}
                 suggestion_found = False
                 for p1, out1 in possible_paths:
                     for p2, out2 in possible_paths:
-                        if out1 != out2 and p1[i] != p2[i] and p1[i] != "-" and p2[i] != "-":
-                            if all(p1[j] == "-" or p2[j] == "-" or p1[j] == p2[j] for j in range(len(ops)) if i != j):
-                                v1 = f"({', '.join(p1)})"
-                                v2 = f"({', '.join(p2)})"
-                                suggestion = f"Suggest pair: {v1} -> {out1} and {v2} -> {out2}"
+                        if out1 != out2 and p1[i] != p2[i] and p1[i] != "-" and p2[i] != "-": # noqa: C901
+                            if all(p1[j] == "-" or p2[j] == "-" or p1[j] == p2[j] for j in range(len(ops)) if i != j): # noqa: C901
+                                suggestion = {
+                                    "p1": {"vector": p1, "outcome": out1},
+                                    "p2": {"vector": p2, "outcome": out2},
+                                }
                                 suggestion_found = True
                                 break
                     if suggestion_found:
@@ -163,7 +164,8 @@ class BooleanVectorEvaluator:
                     name_str = f"Condition {i+1}"
 
                 msg = f"{name_str} independent effect not proven."
-                if suggestion:
-                    msg += f" {suggestion}"
-                missing.append({'message': msg, 'terminal': True})
+                item = {'message': msg, 'terminal': True, 'condition_index': i}
+                if suggestion_found:
+                    item['suggestion'] = suggestion
+                missing.append(item)
         return missing

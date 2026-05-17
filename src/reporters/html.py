@@ -3,7 +3,7 @@ import html
 import collections
 import tokenize
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from . import templates
 from .base import BaseReporter, AnalysisResults, FileResults
@@ -120,8 +120,9 @@ class HtmlReporter(BaseReporter):
         for i, line in enumerate(source_lines):
             lineno = i + 1
             css_class = ""
+            toggle_text: Optional[str] = None
+            inline_detail: Optional[str] = None
             details_html = None
-            toggle_text = None
 
             if lineno in executed_lines:
                 css_class = "hit"
@@ -129,15 +130,22 @@ class HtmlReporter(BaseReporter):
                 css_class = "miss"
 
             if lineno in line_annotations:
-                if css_class == "hit":
-                    css_class = "partial"
                 anns = line_annotations[lineno]
-                toggle_text = f"{len(anns)} Missing Details"
-                list_items = "".join([f"<div style='margin-bottom: 5px;'>{a}</div>" for a in anns])
-                details_html = f"<div class='annotation-list'>{list_items}</div>"
+                is_simple = len(anns) == 1 and '<table' not in anns[0].lower() and '<br' not in anns[0].lower()
+
+                if is_simple:
+                    inline_detail = anns[0]
+                    if css_class == "hit":
+                        css_class = "partial"
+                else:
+                    if css_class == "hit":
+                        css_class = "partial"
+                    toggle_text = f"{len(anns)} Missing Details"
+                    list_items = "<hr class='annotation-divider'>".join([f"<div style='margin-bottom: 5px;'>{a}</div>" for a in anns])
+                    details_html = f"<div class='annotation-list'>{list_items}</div>"
 
             line_content = html.escape(line.rstrip())
-            code_html += templates.render_code_line(lineno, line_content, css_class, toggle_text, details_html)
+            code_html += templates.render_code_line(lineno, line_content, css_class, toggle_text, details_html, inline_detail)
 
         html_content = templates.render_file(html.escape(rel_name), code_html)
 

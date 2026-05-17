@@ -48,11 +48,21 @@ class BranchFormatter(BaseFormatter):
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
         annotations = collections.defaultdict(list)
         missing_branches = collections.defaultdict(list)
+        possible_by_line = collections.defaultdict(list)
+        executed_by_line = collections.defaultdict(list)
+
         for start, end in stats.get('missing', set()):
             missing_branches[start].append(end)
+        for start, end in stats.get('possible', set()):
+            possible_by_line[start].append(end)
+        for start, end in stats.get('executed', set()):
+            executed_by_line[start].append(end)
+
         for start, targets in missing_branches.items():
-            targets_str = ", ".join(map(str, targets))
-            annotations[start].append(f"Missed branch to: {targets_str}")
+            targets_html = ", ".join(f'<a href="#L{t}">{t}</a>' for t in sorted(targets))
+            poss = len(possible_by_line[start])
+            exe = len(executed_by_line[start])
+            annotations[start].append(f"<strong>Branch Coverage: {exe}/{poss}</strong><br>Missed branch to: {targets_html}")
         return dict(annotations)
 
 
@@ -134,6 +144,95 @@ class ConditionFormatter(BaseFormatter):
 class MMCDCFormatter(ConditionFormatter):
     max_rows_display = 20
 
+    def _format_suggestion(self, suggestion: Dict[str, Any]) -> str:
+        """Formats an MMC/DC suggestion pair into a nice HTML structure."""
+        p1 = suggestion['p1']
+        p2 = suggestion['p2']
+
+        def _format_tile(data: Dict[str, Any]) -> str:
+            vec_str = ", ".join(map(str, data['vector']))
+            out_str = html.escape(str(data['outcome']))
+            return f"""
+            <div class="suggestion-tile">
+                <div class="suggestion-vector">({vec_str})</div>
+                <div class="suggestion-outcome">→ {out_str}</div>
+            </div>
+            """
+
+        return f"""
+        <div class="suggestion-pair" style="margin-top: 0;">
+            <div class="suggestion-header">Suggested Pair:</div>
+            {_format_tile(p1)}
+            <div class="suggestion-conjunction">and</div>
+            {_format_tile(p2)}
+        </div>
+        """
+
+    def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
+        annotations = collections.defaultdict(list)
+        missing_outcomes = stats.get('missing_outcomes', {})
+        for lineno, decisions in missing_outcomes.items():
+            if isinstance(decisions, dict):
+                decisions = [decisions]
+
+            for cond_info in decisions:
+                if 'ratio' in cond_info and cond_info.get('missing'):
+                    conditions_count = cond_info.get('conditions', 0)
+                    if conditions_count == 0:
+                        continue
+
+                    condition_names = cond_info.get('condition_names', [])
+                    header_cols = "".join(
+                        f"<th>{html.escape(condition_names[i] if i < len(condition_names) else f'Implicit Jump {i + 1 - len(condition_names)}')}</th>"
+                        for i in range(conditions_count)
+                    )
+                    header_cols += "<th>Result</th>"
+                    header_row = f"<tr>{header_cols}</tr>"
+
+                    rows = [header_row]
+
+                    # Render executed items (same as base class)
+                    executed_items = cond_info.get('executed', [])
+                    for i, item in enumerate(executed_items):
+                        if self.max_rows_display and i >= self.max_rows_display and len(executed_items) > self.max_rows_display + 1:
+                            remaining = len(executed_items) - self.max_rows_display
+                            rows.append(f"<tr class='hit'><td colspan='{conditions_count + 1}' style='text-align: center; font-style: italic; color: #6c757d; background-color: #f8f9fa;'>... and {remaining} more executed combinations</td></tr>")
+                            break
+
+                        vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
+                        result_html = f"<td>{html.escape(str(item['result']))}</td>"
+                        rows.append(f"<tr class='hit'>{vector_html}{result_html}</tr>")
+
+                    # Summary Table for MMC/DC Independence
+                    missing_items = cond_info.get('missing', [])
+                    missing_by_idx = {item.get('condition_index', -1): item for item in missing_items}
+
+                    summary_rows = []
+                    summary_header = "<tr><th>Condition</th><th>Proven</th><th>Details</th></tr>"
+                    summary_rows.append(summary_header)
+
+                    for i in range(conditions_count):
+                        name = condition_names[i] if i < len(condition_names) else f"Implicit Jump {i + 1 - len(condition_names)}"
+                        name_html = f"<code>{html.escape(name)}</code>"
+
+                        if i in missing_by_idx:
+                            item = missing_by_idx[i]
+                            proven_html = "<span style='color: #dc3545; font-weight: bold;'>False</span>"
+                            details_html = "<span style='color: #6c757d; font-style: italic;'>No independent pair possible (masked)</span>"
+                            if 'suggestion' in item:
+                                details_html = self._format_suggestion(item['suggestion'])
+                            summary_rows.append(f"<tr class='miss'><td>{name_html}</td><td>{proven_html}</td><td>{details_html}</td></tr>")
+                        else:
+                            proven_html = "<span style='color: #28a745; font-weight: bold;'>True</span>"
+                            summary_rows.append(f"<tr class='hit'><td>{name_html}</td><td>{proven_html}</td><td style='color: #6c757d; font-style: italic;'>Independence proven</td></tr>")
+
+                    executed_table = f"<div style='margin-bottom: 10px;'><div style='font-size: 0.9em; font-weight: bold; color: #495057;'>Executed Combinations:</div><table class='condition-table'><tbody>{''.join(rows)}</tbody></table></div>"
+                    summary_table = f"<div><div style='font-size: 0.9em; font-weight: bold; color: #495057;'>Independence Summary:</div><table class='condition-table'><tbody>{''.join(summary_rows)}</tbody></table></div>"
+
+                    table = f"<strong>MMC/DC Coverage: {cond_info['ratio']}</strong><hr class='annotation-divider'>{executed_table}{summary_table}"
+                    annotations[lineno].append(table)
+        return dict(annotations)
+
     def format_console(self, stats: Dict[str, Any]) -> str:
         missing_outcomes = stats.get('missing_outcomes', {})
         count = 0
@@ -145,11 +244,6 @@ class MMCDCFormatter(ConditionFormatter):
         if count > 0:
             return f"{count} MMC/DC missed"
         return ""
-
-    def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
-        html_map = super().format_html(stats)
-        # Rename the generic table header for MMC/DC specifically
-        return {k: [v.replace("Condition Coverage", "MMC/DC Coverage") for v in vals] for k, vals in html_map.items()}
 
 
 class MCCFormatter(ConditionFormatter):
@@ -180,17 +274,17 @@ def _simple_count_formatter(name: str):
 
 class FunctionFormatter(_simple_count_formatter("funcs")):
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
-        return {def_line: [f"Function '{html.escape(name)}' was not called"] for name, def_line, _ in stats.get('missing', set())}
+        return {def_line: [f"<strong>Function '{html.escape(name)}' was not called</strong>"] for name, def_line, _ in stats.get('missing', set())}
 
 
 class LoopFormatter(_simple_count_formatter("loop paths")):
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
-        return {start: ["Missed loop path(s)"] for start, _ in stats.get('missing', set())}
+        return {start: ["<strong>Missed loop path(s)</strong>"] for start, _ in stats.get('missing', set())}
 
 
 class ClassFormatter(_simple_count_formatter("classes")):
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
-        return {def_line: [f"Class '{html.escape(name)}' was not instantiated"] for name, def_line, _ in stats.get('missing', set())}
+        return {def_line: [f"<strong>Class '{html.escape(name)}' was not instantiated</strong>"] for name, def_line, _ in stats.get('missing', set())}
 
 
 class CallSiteFormatter(_simple_count_formatter("calls")):
@@ -198,14 +292,14 @@ class CallSiteFormatter(_simple_count_formatter("calls")):
         calls_by_line = collections.defaultdict(list)
         for name, lineno in stats.get('missing', set()):
             calls_by_line[lineno].append(name)
-        return {lineno: [f"Missed call to: {html.escape(', '.join(names))}"] for lineno, names in calls_by_line.items()}
+        return {lineno: [f"<strong>Missed call to: {html.escape(', '.join(names))}</strong>"] for lineno, names in calls_by_line.items()}
 
 
 class ExceptionFormatter(_simple_count_formatter("exceptions")):
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
-        return {lineno: ["Missed exception handler"] for lineno in stats.get('missing', set())}
+        return {lineno: ["<strong>Missed exception handler</strong>"] for lineno in stats.get('missing', set())}
 
 
 class ReturnFormatter(_simple_count_formatter("returns")):
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
-        return {lineno: ["Missed return statement"] for lineno in stats.get('missing', set())}
+        return {lineno: ["<strong>Missed return statement</strong>"] for lineno in stats.get('missing', set())}
