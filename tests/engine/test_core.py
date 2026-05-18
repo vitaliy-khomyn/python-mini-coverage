@@ -20,7 +20,7 @@ class TestEngineCore(BaseTestCase):
         self.cov = MiniCoverage(project_root=self.test_dir)
 
     def test_initialization(self):
-        self.assertEqual(self.cov.current_context, "default")
+        self.assertEqual(self.cov.tracer_controller.current_context, "default")
         self.assertIsNotNone(self.cov.config)
 
     def test_should_trace_filters(self):
@@ -47,34 +47,34 @@ class TestEngineCore(BaseTestCase):
 
         with patch.object(self.cov.path_manager, 'should_trace', return_value=False):
             with patch('sys.monitoring.set_local_events') as mock_set:
-                self.cov.sys_monitoring_tracer._monitor_py_start(code, 0)
+                self.cov.tracer_controller.sys_monitoring_tracer._monitor_py_start(code, 0)
                 mock_set.assert_any_call(sys.monitoring.COVERAGE_ID, code, 0)
 
     def test_monitor_py_resume(self):
-        self.cov.thread_local.last_line = 10
-        self.cov.thread_local.last_lasti = 20
+        self.cov.tracer_controller.thread_local.last_line = 10
+        self.cov.tracer_controller.thread_local.last_lasti = 20
         code = MagicMock(spec=types.CodeType)
-        self.cov.sys_monitoring_tracer._monitor_py_resume(code, 0)
-        self.assertIsNone(self.cov.thread_local.last_line)
-        self.assertIsNone(self.cov.thread_local.last_lasti)
+        self.cov.tracer_controller.sys_monitoring_tracer._monitor_py_resume(code, 0)
+        self.assertIsNone(self.cov.tracer_controller.thread_local.last_line)
+        self.assertIsNone(self.cov.tracer_controller.thread_local.last_lasti)
 
     def test_trace_function_clears_history(self):
         frame = MagicMock()
         frame.f_code.co_filename = "test.py"
-        self.cov.thread_local.last_line = 10
-        self.cov.thread_local.last_lasti = 20
-        self.cov.sys_settrace_tracer.trace_function(frame, "call", None)
-        self.assertIsNone(self.cov.thread_local.last_line)
-        self.assertIsNone(self.cov.thread_local.last_lasti)
+        self.cov.tracer_controller.thread_local.last_line = 10
+        self.cov.tracer_controller.thread_local.last_lasti = 20
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(frame, "call", None)
+        self.assertIsNone(self.cov.tracer_controller.thread_local.last_line)
+        self.assertIsNone(self.cov.tracer_controller.thread_local.last_lasti)
 
-        self.cov.thread_local.last_line = 10
-        self.cov.sys_settrace_tracer.trace_function(frame, "return", None)
-        self.assertIsNone(self.cov.thread_local.last_line)
+        self.cov.tracer_controller.thread_local.last_line = 10
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(frame, "return", None)
+        self.assertIsNone(self.cov.tracer_controller.thread_local.last_line)
 
     def test_trace_function_other_events(self):
         frame = MagicMock()
-        res = self.cov.sys_settrace_tracer.trace_function(frame, "exception", None)
-        self.assertEqual(res, self.cov.sys_settrace_tracer.trace_function)
+        res = self.cov.tracer_controller.sys_settrace_tracer.trace_function(frame, "exception", None)
+        self.assertEqual(res, self.cov.tracer_controller.sys_settrace_tracer.trace_function)
 
     def test_start_sys_monitoring_failure_fallback(self):
         if sys.version_info < (3, 12):
@@ -89,13 +89,18 @@ class TestEngineCore(BaseTestCase):
         if sys.version_info < (3, 12):
             self.skipTest("sys.monitoring only available in 3.12+")
         with patch('sys.monitoring.set_events', side_effect=ValueError("Stop Error")):
-            self.cov.sys_monitoring_tracer.stop()
+            self.cov.tracer_controller.sys_monitoring_tracer.stop()
 
     def test_patch_multiprocessing_idempotency(self):
-        self.cov._patch_multiprocessing()
+        from src.engine.process_manager import ProcessManager
         import multiprocessing
+
+        if hasattr(multiprocessing, '_mini_coverage_patched'):
+            del multiprocessing._mini_coverage_patched
+
+        ProcessManager.patch_multiprocessing(self.cov.project_root, None)
         self.assertTrue(hasattr(multiprocessing, '_mini_coverage_patched'))
-        self.cov._patch_multiprocessing()
+        ProcessManager.patch_multiprocessing(self.cov.project_root, None)
         self.assertTrue(hasattr(multiprocessing, '_mini_coverage_patched'))
 
     def test_run_re_raises_exceptions(self):
@@ -111,50 +116,50 @@ class TestEngineCore(BaseTestCase):
     def test_trace_function_line_capture(self):
         filename = os.path.join(self.test_dir, "test.py")
         frame = MockFrame(filename, 10)
-        self.cov.sys_settrace_tracer.trace_function(frame, "line", None)
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(frame, "line", None)
         # default context is 0
         self.assertIn(10, self.cov.trace_data[TraceDataType.LINES][filename][0])
 
     def test_trace_function_arc_capture_same_file(self):
         filename = os.path.join(self.test_dir, "test.py")
         f1 = MockFrame(filename, 10)
-        self.cov.sys_settrace_tracer.trace_function(f1, "line", None)
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(f1, "line", None)
         f2 = MockFrame(filename, 11)
-        self.cov.sys_settrace_tracer.trace_function(f2, "line", None)
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(f2, "line", None)
         self.assertIn((10, 11), self.cov.trace_data[TraceDataType.ARCS][filename][0])
 
     def test_trace_function_arc_cross_file_reset(self):
         f1 = os.path.join(self.test_dir, "a.py")
         f2 = os.path.join(self.test_dir, "b.py")
 
-        self.cov.sys_settrace_tracer.trace_function(MockFrame(f1, 1), "line", None)
-        self.cov.sys_settrace_tracer.trace_function(MockFrame(f2, 1), "line", None)
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(MockFrame(f1, 1), "line", None)
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(MockFrame(f2, 1), "line", None)
 
         # should NOT link a.py:1 -> b.py:1
         self.assertEqual(len(self.cov.trace_data[TraceDataType.ARCS][f1][0]), 0)
 
-        self.cov.sys_settrace_tracer.trace_function(MockFrame(f2, 2), "line", None)
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(MockFrame(f2, 2), "line", None)
         self.assertIn((1, 2), self.cov.trace_data[TraceDataType.ARCS][f2][0])
 
     def test_context_switching(self):
         self.cov.switch_context("ctx1")
-        self.assertEqual(self.cov.current_context, "ctx1")
-        cid1 = self.cov._get_current_context_id()
+        self.assertEqual(self.cov.tracer_controller.current_context, "ctx1")
+        cid1 = self.cov.tracer_controller._get_current_context_id()
         self.assertGreater(cid1, 0)
 
         self.cov.switch_context("ctx2")
-        cid2 = self.cov._get_current_context_id()
+        cid2 = self.cov.tracer_controller._get_current_context_id()
         self.assertNotEqual(cid1, cid2)
 
         self.cov.switch_context("ctx1")
-        cid3 = self.cov._get_current_context_id()
+        cid3 = self.cov.tracer_controller._get_current_context_id()
         self.assertEqual(cid1, cid3)
 
     def test_trace_with_context_persistence(self):
         filename = os.path.join(self.test_dir, "test.py")
 
         self.cov.switch_context("test_A")
-        self.cov.sys_settrace_tracer.trace_function(MockFrame(filename, 10), "line", None)
+        self.cov.tracer_controller.sys_settrace_tracer.trace_function(MockFrame(filename, 10), "line", None)
 
         self.cov.save_data()
 
@@ -182,7 +187,7 @@ class TestEngineCore(BaseTestCase):
         for t in threads: t.start()
         for t in threads: t.join()
 
-        self.assertEqual(len(self.cov.context_cache), 6)
+        self.assertEqual(len(self.cov.tracer_controller.context_cache), 6)
 
     def test_save_data_sqlite(self):
         filename = os.path.join(self.test_dir, "test.py")
@@ -220,17 +225,17 @@ class TestEngineCore(BaseTestCase):
 
         def t1_work():
             f1 = MockFrame(filename, 10)
-            self.cov.sys_settrace_tracer.trace_function(f1, "line", None)
+            self.cov.tracer_controller.sys_settrace_tracer.trace_function(f1, "line", None)
             import time;
             time.sleep(0.01)
             f2 = MockFrame(filename, 11)
-            self.cov.sys_settrace_tracer.trace_function(f2, "line", None)
+            self.cov.tracer_controller.sys_settrace_tracer.trace_function(f2, "line", None)
 
         def t2_work():
             f1 = MockFrame(filename, 20)
-            self.cov.sys_settrace_tracer.trace_function(f1, "line", None)
+            self.cov.tracer_controller.sys_settrace_tracer.trace_function(f1, "line", None)
             f2 = MockFrame(filename, 21)
-            self.cov.sys_settrace_tracer.trace_function(f2, "line", None)
+            self.cov.tracer_controller.sys_settrace_tracer.trace_function(f2, "line", None)
 
         th1 = threading.Thread(target=t1_work)
         th2 = threading.Thread(target=t2_work)

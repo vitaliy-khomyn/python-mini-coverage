@@ -13,7 +13,7 @@ class TestStorage(unittest.TestCase):
         self.cov.trace_data[TraceDataType.LINES]['dummy.py'][0].add(1)
         with patch('sqlite3.connect', side_effect=Exception("DB Error")):
             with self.assertLogs('src.engine.storage', level='ERROR') as cm:
-                self.cov.storage.save(self.cov.trace_data, self.cov.context_cache)
+                self.cov.storage.save(self.cov.trace_data, self.cov.tracer_controller.context_cache)
                 self.assertTrue(any("Failed to save coverage data" in o for o in cm.output))
 
     def test_storage_combine_operational_error(self):
