@@ -35,7 +35,7 @@ class TestJsonReporter(BaseTestCase):
         out_file = os.path.join(self.test_dir, "coverage.json")
         reporter = JsonReporter(output_file=out_file)
 
-        with self.capture_stdout():
+        with self.assertLogs(reporter.logger, level='INFO'):
             reporter.generate(self.results, self.project_root)
 
         with open(out_file) as f:
@@ -50,7 +50,9 @@ class TestJsonReporter(BaseTestCase):
 
     def test_empty_results(self):
         empty = {}
-        JsonReporter(output_file="e.json").generate(empty, self.test_dir)
+        reporter = JsonReporter(output_file="e.json")
+        with self.assertLogs(reporter.logger, level='INFO'):
+            reporter.generate(empty, self.test_dir)
         with open("e.json") as f:
             self.assertEqual(json.load(f)["files"], {})
 
@@ -72,7 +74,7 @@ class TestJsonReporter(BaseTestCase):
         out_file = os.path.join(self.test_dir, "coverage_ext.json")
         reporter = JsonReporter(output_file=out_file)
 
-        with self.capture_stdout():
+        with self.assertLogs(reporter.logger, level='INFO'):
             reporter.generate(res, self.project_root)
 
         with open(out_file) as f:

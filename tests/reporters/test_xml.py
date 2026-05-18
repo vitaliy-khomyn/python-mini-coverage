@@ -35,7 +35,7 @@ class TestXmlReporter(BaseTestCase):
         out_file = os.path.join(self.test_dir, "coverage.xml")
         reporter = XmlReporter(output_file=out_file)
 
-        with self.capture_stdout():
+        with self.assertLogs(reporter.logger, level='INFO'):
             reporter.generate(self.results, self.project_root)
 
         tree = ET.parse(out_file)
@@ -54,7 +54,9 @@ class TestXmlReporter(BaseTestCase):
 
     def test_empty_results(self):
         empty = {}
-        XmlReporter(output_file="e.xml").generate(empty, self.test_dir)
+        reporter = XmlReporter(output_file="e.xml")
+        with self.assertLogs(reporter.logger, level='INFO'):
+            reporter.generate(empty, self.test_dir)
         tree = ET.parse("e.xml")
         self.assertEqual(tree.getroot().attrib["lines-covered"], "0")
 
@@ -70,7 +72,7 @@ class TestXmlReporter(BaseTestCase):
         out_file = os.path.join(self.test_dir, "coverage_ext.xml")
         reporter = XmlReporter(output_file=out_file)
 
-        with self.capture_stdout():
+        with self.assertLogs(reporter.logger, level='INFO'):
             reporter.generate(res, self.project_root)
 
         tree = ET.parse(out_file)

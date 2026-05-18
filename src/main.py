@@ -1,7 +1,7 @@
 import argparse
 import logging
-import os
 import sys
+from pathlib import Path
 
 from .engine import MiniCoverage
 
@@ -39,12 +39,13 @@ def main() -> None:
     config_file = None
     if args.command == "run":
         script_path = args.script
-        if os.path.isfile(script_path):
-            script_dir = os.path.dirname(os.path.abspath(script_path))
+        p = Path(script_path)
+        if p.is_file():
+            script_dir = p.resolve().parent
             for config_name in ['.coveragerc', 'pyproject.toml', 'setup.cfg', 'tox.ini']:
-                candidate = os.path.join(script_dir, config_name)
-                if os.path.exists(candidate):
-                    config_file = candidate
+                candidate = script_dir / config_name
+                if candidate.exists():
+                    config_file = str(candidate)
                     logging.info(f"Auto-loading local configuration from {config_file}")
                     break
 
@@ -59,7 +60,7 @@ def main() -> None:
     if args.command == "run":
         # ensure the script path is absolute or correct relatively to CWD
         script_path = args.script
-        if not os.path.isfile(script_path):
+        if not Path(script_path).is_file():
             logging.error(f"Script '{script_path}' not found.")
             sys.exit(1)
 

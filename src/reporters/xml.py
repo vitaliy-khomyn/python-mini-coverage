@@ -2,6 +2,7 @@ import collections
 import os
 import time
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from typing import Any
 
@@ -20,7 +21,7 @@ class XmlReporter(BaseReporter):
         self.output_file = output_file
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
-        print(f"Generating XML report to {self.output_file}...")
+        self.logger.info(f"Generating XML report to {self.output_file}...")
 
         active_metrics = get_active_metrics(self.config)
         totals = {f"{m.xml_key}_valid": 0 for m in active_metrics}
@@ -78,7 +79,11 @@ class XmlReporter(BaseReporter):
         classes = ET.SubElement(package, "classes")
 
         for filename in sorted(results.keys()):
-            rel_name = os.path.relpath(filename, project_root)
+            try:
+                rel_name = str(Path(filename).relative_to(Path(project_root)))
+            except ValueError:
+                rel_name = os.path.relpath(filename, project_root)
+
             file_data = results[filename]
 
             stmt = None

@@ -1,6 +1,7 @@
 import os
 import logging
 import configparser
+from pathlib import Path
 from typing import Optional, Set, Dict, Any
 from .config import CoverageConfig
 
@@ -43,21 +44,21 @@ class ConfigLoader:
         for cand in candidates:
             if not cand:
                 continue
-            path = os.path.join(project_root, cand)
-            if not os.path.exists(path):
+            path = Path(project_root) / cand
+            if not path.exists():
                 continue
 
             try:
                 if cand.endswith('.toml'):
                     if tomllib:
-                        self._load_toml(path, config)
+                        self._load_toml(str(path), config)
                         break
                     else:
                         self.logger.warning(
                             "Found pyproject.toml but Python < 3.11 and 'tomli' not installed. Skipping.")
                 else:
                     # INI-style parsing
-                    if self._load_ini(path, config):
+                    if self._load_ini(str(path), config):
                         break
             except Exception as e:
                 self.logger.warning(f"Failed to parse configuration file {path}: {e}")

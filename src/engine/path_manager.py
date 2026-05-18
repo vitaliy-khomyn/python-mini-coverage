@@ -1,5 +1,6 @@
 import fnmatch
 import os
+from pathlib import Path
 
 from typing import Set
 from .config import CoverageConfig
@@ -21,21 +22,16 @@ class PathManager:
         if path in self._cache:
             return self._cache[path]
 
-        # Fallback to abspath if file doesn't exist
-        if os.path.exists(path):
-            result = os.path.normcase(os.path.realpath(path))
-            self._cache[path] = result
-            return result
+        p = Path(path)
+        if p.exists():
+            result = str(p.resolve())
+        else:
+            if p.parent.exists():
+                result = str(p.parent.resolve() / p.name)
+            else:
+                result = str(p.absolute())
 
-        # If file doesn't exist, try to resolve the directory part
-        # This ensures that if project_root is realpath'ed, files inside it are too.
-        head, tail = os.path.split(os.path.abspath(path))
-        if os.path.exists(head):
-            result = os.path.normcase(os.path.join(os.path.realpath(head), tail))
-            self._cache[path] = result
-            return result
-
-        result = os.path.normcase(os.path.abspath(path))
+        result = os.path.normcase(result)
         self._cache[path] = result
         return result
 
@@ -47,12 +43,17 @@ class PathManager:
         # handle case where config is a dict (during init) or CoverageConfig
         paths_config = self.config.get('paths', {}) if isinstance(self.config, dict) else self.config.paths
 
+        p = Path(path)
         for canonical, aliases in paths_config.items():
             for alias in aliases:
                 norm_alias = os.path.normcase(alias)
-                # verify directory boundary to prevent prefix collisions
-                if path == norm_alias or path.startswith(norm_alias + ('' if norm_alias.endswith(os.sep) else os.sep)):
-                    return path.replace(norm_alias, canonical, 1)
+                alias_p = Path(norm_alias)
+
+                if p.is_relative_to(alias_p):
+                    rel = p.relative_to(alias_p)
+                    return str(Path(canonical) / rel)
+                elif path == norm_alias:
+                    return canonical
         return path
 
     def should_trace(self, filename: str, excluded_files: Set[str]) -> bool:
@@ -60,25 +61,25 @@ class PathManager:
         Determine if a file should be tracked based on project root and exclusions.
         """
         abs_path = self.canonicalize(filename)
+        p = Path(abs_path)
+        root_p = Path(self.project_root)
 
-        if not abs_path.startswith(self.project_root):
+        if not p.is_relative_to(root_p) and abs_path != self.project_root:
             return False
 
         # check exclusions (exact match or directory prefix)
         for excluded in excluded_files:
-            if abs_path == excluded or abs_path.startswith(excluded + os.sep):
+            exc_p = Path(excluded)
+            if p == exc_p or p.is_relative_to(exc_p):
                 return False
 
         try:
-            rel_path = os.path.relpath(abs_path, self.project_root)
+            rel_path = p.relative_to(root_p).as_posix()
         except ValueError:
             return False
 
-        # normalize to forward slashes for consistent pattern matching
-        rel_path = rel_path.replace(os.sep, '/')
-
         omit_patterns = self.config.get('omit', []) if isinstance(self.config, dict) else self.config.omit
-        filename_only = os.path.basename(abs_path)
+        filename_only = p.name
 
         for pattern in omit_patterns:
             # if pattern contains a separator, match against the full relative path

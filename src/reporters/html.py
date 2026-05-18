@@ -2,6 +2,7 @@ import os
 import html
 import collections
 import tokenize
+from pathlib import Path
 
 from typing import Any, Dict, List, Optional
 
@@ -20,10 +21,10 @@ class HtmlReporter(BaseReporter):
         self.output_dir = output_dir
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+        out_path = Path(self.output_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
 
-        print(f"Generating HTML report in {self.output_dir}...")
+        self.logger.info(f"Generating HTML report in {self.output_dir}...")
         self._generate_index(results, project_root)
 
         for filename, data in results.items():
@@ -56,7 +57,11 @@ class HtmlReporter(BaseReporter):
             if not has_statement_data:
                 continue
 
-            rel_name = os.path.relpath(filename, project_root)
+            try:
+                rel_name = str(Path(filename).relative_to(Path(project_root)))
+            except ValueError:
+                rel_name = os.path.relpath(filename, project_root)
+
             file_html_link = f"{self._sanitize_filename(rel_name)}.html"
 
             rows += templates.render_index_row(
@@ -86,11 +91,14 @@ class HtmlReporter(BaseReporter):
 
         html_content = templates.render_index([m.html_display for m in active_metrics], total_stats, rows)
 
-        with open(os.path.join(self.output_dir, "index.html"), "w", encoding="utf-8") as f:
+        with open(Path(self.output_dir) / "index.html", "w", encoding="utf-8") as f:
             f.write(html_content)
 
     def _generate_file_report(self, filename: str, data: FileResults, project_root: str) -> None:
-        rel_name = os.path.relpath(filename, project_root)
+        try:
+            rel_name = str(Path(filename).relative_to(Path(project_root)))
+        except ValueError:
+            rel_name = os.path.relpath(filename, project_root)
         out_name = f"{self._sanitize_filename(rel_name)}.html"
 
         stmt_data = data.get('Statement')
@@ -149,8 +157,8 @@ class HtmlReporter(BaseReporter):
 
         html_content = templates.render_file(html.escape(rel_name), code_html)
 
-        with open(os.path.join(self.output_dir, out_name), "w", encoding="utf-8") as f:
+        with open(Path(self.output_dir) / out_name, "w", encoding="utf-8") as f:
             f.write(html_content)
 
     def _sanitize_filename(self, path: str) -> str:
-        return path.replace(os.sep, "_").replace(".", "_")
+        return path.replace("\\", "_").replace("/", "_").replace(".", "_")

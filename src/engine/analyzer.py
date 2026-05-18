@@ -1,5 +1,5 @@
-import os
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, Any, Set, List
 from .config import CoverageConfig
 from .trace_data import TraceDataType
@@ -65,7 +65,7 @@ class Analyzer:
         for norm_file, raw_files in file_map.items():
             canonical_filename = raw_files[0]
             for rf in raw_files:
-                if os.path.exists(rf):
+                if Path(rf).exists():
                     canonical_filename = rf
                     break
 

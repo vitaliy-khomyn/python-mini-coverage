@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+from pathlib import Path
 
 from typing import Optional, List, Dict, Any, Set
 
@@ -93,7 +94,7 @@ class MiniCoverage:
 
         # auto-exclude the tool's own source code to prevent self-instrumentation
         # get the 'src' directory (grandparent of this file)
-        _src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _src_dir = str(Path(__file__).resolve().parent.parent)
         self._lib_root = self.path_manager.canonicalize(_src_dir)
         self.excluded_files.add(self._lib_root)
 
@@ -102,17 +103,20 @@ class MiniCoverage:
         Erase previously collected coverage data and reports.
         """
         def _safe_erase(path: str, is_dir: bool, desc: str) -> None:
-            if path and os.path.exists(path):
+            if path and Path(path).exists():
                 try:
-                    shutil.rmtree(path) if is_dir else os.remove(path)
+                    if is_dir:
+                        shutil.rmtree(path)
+                    else:
+                        Path(path).unlink()
                     self.logger.info(f"Erased old {desc}: {path}")
                 except OSError as e:
                     self.logger.warning(f"Failed to erase {desc}: {e}")
 
         _safe_erase(self.config.data_file, False, "coverage data")
-        _safe_erase(os.path.join(self.project_root, "htmlcov"), True, "HTML report directory")
-        _safe_erase(os.path.join(self.project_root, "coverage.xml"), False, "XML report")
-        _safe_erase(os.path.join(self.project_root, "coverage.json"), False, "JSON report")
+        _safe_erase(str(Path(self.project_root) / "htmlcov"), True, "HTML report directory")
+        _safe_erase(str(Path(self.project_root) / "coverage.xml"), False, "XML report")
+        _safe_erase(str(Path(self.project_root) / "coverage.json"), False, "JSON report")
 
     def switch_context(self, context_label: str) -> None:
         self.tracer_controller.switch_context(context_label)

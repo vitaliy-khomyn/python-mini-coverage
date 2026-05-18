@@ -31,9 +31,9 @@ class TestConsoleReporter(BaseTestCase):
 
     def test_console_reporter_basic(self):
         reporter = ConsoleReporter()
-        with self.capture_stdout() as output:
+        with self.assertLogs(reporter.logger, level='INFO') as cm:
             reporter.generate(self.results, self.project_root)
-            text = output.getvalue()
+            text = "\n".join(cm.output)
 
         self.assertIn("main.py", text)
         self.assertIn("50%", text)
@@ -44,16 +44,15 @@ class TestConsoleReporter(BaseTestCase):
         res = {f_path: {'Statement': {'pct': 100, 'missing': set(), 'executed': {1}, 'possible': {1}}}}
 
         reporter = ConsoleReporter()
-        with self.capture_stdout() as output:
+        with self.assertLogs(reporter.logger, level='INFO') as cm:
             reporter.generate(res, self.project_root)
-            text = output.getvalue()
+            text = "\n".join(cm.output)
         self.assertNotIn("N/A", text)
         self.assertIn("-", text)
 
     def test_empty_results(self):
         empty = {}
-        with self.capture_stdout() as _:
-            ConsoleReporter().generate(empty, self.test_dir)
+        ConsoleReporter().generate(empty, self.test_dir)
 
     def test_console_reporter_extended_metrics(self):
         res = {
@@ -64,9 +63,9 @@ class TestConsoleReporter(BaseTestCase):
             }
         }
         reporter = ConsoleReporter()
-        with self.capture_stdout() as output:
+        with self.assertLogs(reporter.logger, level='INFO') as cm:
             reporter.generate(res, self.project_root)
-            text = output.getvalue()
+            text = "\n".join(cm.output)
 
         self.assertIn("1 MMC/DC missed", text)
         self.assertIn("1 funcs", text)

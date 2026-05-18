@@ -3,6 +3,7 @@ import logging
 import os
 import sqlite3
 import uuid
+from pathlib import Path
 
 from typing import Dict, Any, Callable
 
@@ -135,7 +136,7 @@ class CoverageStorage:
 
             # since this process created the partial file, there is no lock contention
             try:
-                os.remove(partial_filename)
+                Path(partial_filename).unlink()
             except OSError:
                 pass
         except sqlite3.OperationalError as e:
@@ -158,7 +159,7 @@ class CoverageStorage:
         Populate in-memory trace data from the main database.
         Currently flattens data into the default context (0) for reporting.
         """
-        if not os.path.exists(self.data_file):
+        if not Path(self.data_file).exists():
             return
 
         try:

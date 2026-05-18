@@ -1,7 +1,7 @@
 import logging
-import os
 import sys
 import types
+from pathlib import Path
 from typing import Optional, List, Any
 
 
@@ -12,7 +12,7 @@ class ScriptRunner:
 
     def run(self, script_path: str, script_args: Optional[List[str]] = None) -> None:
         abs_script_path = self.engine.path_manager.canonicalize(script_path)
-        script_dir = os.path.dirname(abs_script_path)
+        script_dir = str(Path(abs_script_path).parent)
 
         original_argv = sys.argv
         original_path = sys.path[:]

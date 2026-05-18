@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Any, List
 
 from .base import BaseReporter, AnalysisResults
@@ -20,18 +21,22 @@ class ConsoleReporter(BaseReporter):
 
         headers = " | ".join(headers_list)
 
-        print("\n" + "=" * len(headers))
-        print(headers)
-        print("-" * len(headers))
+        self.logger.info("\n" + "=" * len(headers))
+        self.logger.info(headers)
+        self.logger.info("-" * len(headers))
 
         for filename in sorted(results.keys()):
             file_data = results[filename]
             if 'Statement' in file_data:
                 self._print_row(filename, file_data, active_metrics, project_root)
-        print("=" * len(headers))
+        self.logger.info("=" * len(headers))
 
     def _print_row(self, filename: str, file_data: dict, active_metrics: List[Any], project_root: str) -> None:
-        rel_name = os.path.relpath(filename, project_root)
+        try:
+            rel_name = str(Path(filename).relative_to(Path(project_root)))
+        except ValueError:
+            rel_name = os.path.relpath(filename, project_root)
+
         row_str = f"{rel_name:<40}"
         missing_items = []
 
@@ -53,4 +58,4 @@ class ConsoleReporter(BaseReporter):
 
         miss_str = "; ".join(missing_items)
         row_str += f" | {miss_str}"
-        print(row_str)
+        self.logger.info(row_str)

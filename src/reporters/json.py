@@ -1,7 +1,7 @@
 import os
 import json
-import logging
 import time
+from pathlib import Path
 
 from typing import Any
 
@@ -16,7 +16,6 @@ class JsonReporter(BaseReporter):
 
     def __init__(self, config: Any = None, output_file: str = "coverage.json") -> None:
         super().__init__(config)
-        self.logger = logging.getLogger(__name__)
         self.output_file = output_file
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
@@ -26,7 +25,10 @@ class JsonReporter(BaseReporter):
         serializable_results = {}
 
         for filename, metrics in results.items():
-            rel_name = os.path.relpath(filename, project_root)
+            try:
+                rel_name = str(Path(filename).relative_to(Path(project_root)))
+            except ValueError:
+                rel_name = os.path.relpath(filename, project_root)
             file_metrics = {}
 
             for metric_name, stats in metrics.items():

@@ -1,4 +1,5 @@
 from abc import ABC
+import logging
 from typing import Dict, Any
 
 # type aliases for clarity
@@ -14,6 +15,7 @@ class BaseReporter(ABC):
     """
     def __init__(self, config: Any = None):
         self.config = config
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def generate(self, results: AnalysisResults, project_root: str) -> None:
         """

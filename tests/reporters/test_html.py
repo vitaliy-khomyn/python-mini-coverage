@@ -34,7 +34,7 @@ class TestHtmlReporter(BaseTestCase):
         out_dir = os.path.join(self.test_dir, "htmlcov")
         reporter = HtmlReporter(output_dir=out_dir)
 
-        with self.capture_stdout():
+        with self.assertLogs(reporter.logger, level='INFO'):
             reporter.generate(self.results, self.project_root)
 
         self.assertTrue(os.path.exists(os.path.join(out_dir, "index.html")))
@@ -50,7 +50,7 @@ class TestHtmlReporter(BaseTestCase):
         out_dir = os.path.join(self.test_dir, "htmlcov_err")
         reporter = HtmlReporter(output_dir=out_dir)
 
-        with self.capture_stdout():
+        with self.assertLogs(reporter.logger, level='INFO'):
             reporter.generate(self.results, self.project_root)
 
         rel_name = os.path.relpath(self.filepath, self.project_root)
@@ -74,7 +74,7 @@ class TestHtmlReporter(BaseTestCase):
             }
         }
 
-        with self.capture_stdout():
+        with self.assertLogs(reporter.logger, level='INFO'):
             reporter.generate(res, self.project_root)
 
         rel_name = os.path.relpath(self.filepath, self.project_root)

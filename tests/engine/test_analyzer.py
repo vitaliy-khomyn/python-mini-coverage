@@ -14,8 +14,8 @@ class TestAnalyzer(BaseTestCase):
     def test_analyze_aggregation(self):
         """Test that analyze aggregates data from multiple raw paths mapping to same file."""
         with patch('os.path.normcase', side_effect=lambda p: p.lower()):
-            with patch('os.path.realpath', side_effect=lambda p: p):
-                with patch('os.path.exists', return_value=True):
+            with patch('os.path.realpath', side_effect=lambda p, **kwargs: p):
+                with patch('pathlib.Path.exists', return_value=True):
                     f1 = "File.py"
                     f2 = "file.py"
 

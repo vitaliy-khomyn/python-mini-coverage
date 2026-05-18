@@ -7,7 +7,7 @@ from src.main import main
 
 class TestMainCLI(unittest.TestCase):
     @patch('src.main.MiniCoverage')
-    @patch('os.path.isfile')
+    @patch('pathlib.Path.is_file')
     def test_run_command_basic(self, mock_isfile, mock_minicoverage):
         mock_isfile.return_value = True
         test_args = ["minicov", "run", "script.py", "arg1"]
@@ -22,7 +22,7 @@ class TestMainCLI(unittest.TestCase):
         mock_cov_instance.run.assert_called_once_with("script.py", ["arg1"])
 
     @patch('src.main.MiniCoverage')
-    @patch('os.path.isfile')
+    @patch('pathlib.Path.is_file')
     def test_run_command_preserve(self, mock_isfile, mock_minicoverage):
         mock_isfile.return_value = True
         test_args = ["minicov", "run", "--preserve", "script.py"]
@@ -33,7 +33,7 @@ class TestMainCLI(unittest.TestCase):
         kwargs = mock_minicoverage.call_args[1]
         self.assertFalse(kwargs.get('erase_on_start', True))
 
-    @patch('os.path.isfile')
+    @patch('pathlib.Path.is_file')
     def test_run_missing_script(self, mock_isfile):
         mock_isfile.return_value = False
         test_args = ["minicov", "run", "missing.py"]
@@ -61,13 +61,13 @@ class TestMainCLI(unittest.TestCase):
         mock_cov_instance.combine_data.assert_called_once()
 
     @patch('src.main.MiniCoverage')
-    @patch('os.path.isfile')
-    @patch('os.path.exists')
+    @patch('pathlib.Path.is_file')
+    @patch('pathlib.Path.exists', autospec=True)
     def test_run_auto_config(self, mock_exists, mock_isfile, mock_minicoverage):
         mock_isfile.return_value = True
 
-        def exists_side_effect(path):
-            return path.endswith('.coveragerc')
+        def exists_side_effect(path_self):
+            return str(path_self).endswith('.coveragerc')
         mock_exists.side_effect = exists_side_effect
 
         test_args = ["minicov", "run", "some_dir/script.py"]

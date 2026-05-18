@@ -51,7 +51,7 @@ class TestPathManager(BaseTestCase):
             src_canonical: [src_alias]
         }
 
-        with patch('os.path.exists', return_value=False):
+        with patch('pathlib.Path.exists', return_value=False):
             # Case 1: Match found
             input_path = os.path.join(src_alias, "file.py")
             mapped = self.pm.map_path(input_path)

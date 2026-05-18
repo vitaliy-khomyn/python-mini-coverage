@@ -42,7 +42,7 @@ class TestStorage(unittest.TestCase):
     def test_storage_combine_os_remove_error(self):
         with patch('glob.glob', return_value=['partial.db']):
             with patch('sqlite3.connect'):
-                with patch('os.remove', side_effect=OSError("Busy")) as mock_remove:
+                with patch('pathlib.Path.unlink', side_effect=OSError("Busy")) as mock_remove:
                     self.cov.storage.combine(lambda x: x)
                     self.assertEqual(mock_remove.call_count, 1)
 
@@ -51,7 +51,7 @@ class TestStorage(unittest.TestCase):
         self.cov.storage.load_into(self.cov.trace_data, self.cov.path_manager)
 
     def test_load_into_operational_error(self):
-        with patch('os.path.exists', return_value=True):
+        with patch('pathlib.Path.exists', return_value=True):
             with patch('sqlite3.connect', side_effect=sqlite3.OperationalError("Corrupt")):
                 with self.assertLogs('src.engine.storage', level='DEBUG') as cm:
                     self.cov.storage.load_into(self.cov.trace_data, self.cov.path_manager)
