@@ -1,6 +1,6 @@
 import ast
 
-from typing import Set, Tuple, Optional
+from typing import Set, Tuple, Optional, Any
 
 from .base import CoverageMetric
 from .visitor import NextStatementVisitor
@@ -37,20 +37,18 @@ class LoopVisitor(NextStatementVisitor):
         super().__init__(ignored_lines)
         self.arcs: Set[Tuple[int, int]] = set()
 
-    def visit_For(self, node: ast.For) -> None:
+    def _handle_loop(self, node: Any) -> None:
         if not self.is_ignored(node):
-            if node.body:
-                self.arcs.add((node.lineno, node.body[0].lineno))
-            exit_node = node.orelse[0] if node.orelse else self._find_next_statement(node)
-            if exit_node:
-                self.arcs.add((node.lineno, exit_node.lineno))
+            start = node.lineno
+            body_target, exit_target = self._get_loop_targets(node)
+            if body_target:
+                self.arcs.add((start, body_target.lineno))
+            if exit_target:
+                self.arcs.add((start, exit_target.lineno))
         self.generic_visit(node)
 
+    def visit_For(self, node: ast.For) -> None:
+        self._handle_loop(node)
+
     def visit_While(self, node: ast.While) -> None:
-        if not self.is_ignored(node):
-            if node.body:
-                self.arcs.add((node.lineno, node.body[0].lineno))
-            exit_node = node.orelse[0] if node.orelse else self._find_next_statement(node)
-            if exit_node:
-                self.arcs.add((node.lineno, exit_node.lineno))
-        self.generic_visit(node)
+        self._handle_loop(node)

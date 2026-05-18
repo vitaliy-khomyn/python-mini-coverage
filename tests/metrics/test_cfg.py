@@ -40,27 +40,6 @@ else:
                     has_back_edge = True
         self.assertTrue(has_back_edge, "Loop should have back-edge")
 
-    def test_dominators_linear(self):
-        code = "x=1\ny=2"
-        cfg = self.build_cfg(code)
-        self.assertEqual(cfg.dominators[0], {0})
-
-    def test_dominators_diamond(self):
-        code = """
-if x:
-    a = 1
-else:
-    a = 2
-z = 3
-"""
-        cfg = self.build_cfg(code)
-        for node, doms in cfg.dominators.items():
-            self.assertIn(0, doms)
-
-        last_block_start = cfg.blocks[-1][0]
-        if last_block_start != 0:
-            self.assertIn(0, cfg.dominators[last_block_start])
-
     def test_cfg_exception_handler(self):
         code = """
 try:

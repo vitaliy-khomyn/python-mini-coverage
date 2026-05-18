@@ -68,6 +68,46 @@ class BranchFormatter(BaseFormatter):
 
 class ConditionFormatter(BaseFormatter):
     max_rows_display = 10
+    metric_name = "Condition Coverage"
+
+    def _render_executed_rows(self, cond_info: Dict[str, Any], conditions_count: int) -> str:
+        rows = []
+        executed_items = cond_info.get('executed', [])
+        for i, item in enumerate(executed_items):
+            if self.max_rows_display and i >= self.max_rows_display and len(executed_items) > self.max_rows_display + 1:
+                remaining = len(executed_items) - self.max_rows_display
+                rows.append(f"<tr class='hit'><td colspan='{conditions_count + 1}' style='text-align: center; font-style: italic; color: #6c757d; background-color: #f8f9fa;'>... and {remaining} more executed combinations</td></tr>")
+                break
+            vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
+            result_html = f"<td>{html.escape(str(item['result']))}</td>"
+            rows.append(f"<tr class='hit'>{vector_html}{result_html}</tr>")
+        return "".join(rows)
+
+    def _render_missing_rows(self, cond_info: Dict[str, Any], conditions_count: int) -> str:
+        rows = []
+        missing_items = cond_info.get('missing', [])
+        for i, item in enumerate(missing_items):
+            if self.max_rows_display and i >= self.max_rows_display and len(missing_items) > self.max_rows_display + 1:
+                remaining = len(missing_items) - self.max_rows_display
+                rows.append(f"<tr class='miss'><td colspan='{conditions_count + 1}' style='text-align: center; font-style: italic; color: #6c757d; background-color: #f8f9fa;'>... and {remaining} more missed combinations</td></tr>")
+                break
+
+            if 'message' in item:
+                rows.append(f"<tr class='miss'><td colspan='{conditions_count + 1}'>{html.escape(item['message'])}</td></tr>")
+            else:
+                vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
+                result_html = f"<td>{html.escape(str(item.get('result', '-')))}</td>"
+                rows.append(f"<tr class='miss'>{vector_html}{result_html}</tr>")
+        return "".join(rows)
+
+    def _render_table(self, cond_info: Dict[str, Any], conditions_count: int, condition_names: List[str]) -> str:
+        header_cols = "".join([f"<th>{html.escape(condition_names[i] if i < len(condition_names) else f'Implicit Jump {i + 1 - len(condition_names)}')}</th>" for i in range(conditions_count)])
+        header_cols += "<th>Result</th>"
+        header_row = f"<tr>{header_cols}</tr>"
+
+        executed_html = self._render_executed_rows(cond_info, conditions_count)
+        missing_html = self._render_missing_rows(cond_info, conditions_count)
+        return f"<strong>{self.metric_name}: {cond_info['ratio']}</strong><table class='condition-table'><tbody>{header_row}{executed_html}{missing_html}</tbody></table>"
 
     def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
         annotations = collections.defaultdict(list)
@@ -83,46 +123,7 @@ class ConditionFormatter(BaseFormatter):
                     if conditions_count == 0:
                         continue
 
-                    header_cols = ""
-                    for i in range(conditions_count):
-                        if i < len(condition_names):
-                            name = condition_names[i]
-                        else:
-                            name = f"Implicit Jump {i + 1 - len(condition_names)}"
-                        header_cols += f"<th>{html.escape(name)}</th>"
-                    header_cols += "<th>Result</th>"
-                    header_row = f"<tr>{header_cols}</tr>"
-
-                    rows = [header_row]
-
-                    executed_items = cond_info.get('executed', [])
-                    for i, item in enumerate(executed_items):
-                        if self.max_rows_display and i >= self.max_rows_display and len(executed_items) > self.max_rows_display + 1:
-                            remaining = len(executed_items) - self.max_rows_display
-                            rows.append(f"<tr class='hit'><td colspan='{conditions_count + 1}' style='text-align: center; font-style: italic; color: #6c757d; background-color: #f8f9fa;'>... and {remaining} more executed combinations</td></tr>")
-                            break
-
-                        vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
-                        result_html = f"<td>{html.escape(str(item['result']))}</td>"
-                        rows.append(f"<tr class='hit'>{vector_html}{result_html}</tr>")
-
-                    missing_items = cond_info.get('missing', [])
-                    for i, item in enumerate(missing_items):
-                        if self.max_rows_display and i >= self.max_rows_display and len(missing_items) > self.max_rows_display + 1:
-                            remaining = len(missing_items) - self.max_rows_display
-                            rows.append(f"<tr class='miss'><td colspan='{conditions_count + 1}' style='text-align: center; font-style: italic; color: #6c757d; background-color: #f8f9fa;'>... and {remaining} more missed combinations</td></tr>")
-                            break
-
-                        if 'message' in item:
-                            rows.append(f"<tr class='miss'><td colspan='{conditions_count + 1}'>{html.escape(item['message'])}</td></tr>")
-                        else:
-                            vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
-                            result_html = f"<td>{html.escape(str(item.get('result', '-')))}</td>"
-                            rows.append(f"<tr class='miss'>{vector_html}{result_html}</tr>")
-
-                    table_rows = "".join(rows)
-                    table = f"<strong>Condition Coverage: {cond_info['ratio']}</strong>" \
-                            f"<table class='condition-table'><tbody>{table_rows}</tbody></table>"
+                    table = self._render_table(cond_info, conditions_count, condition_names)
                     annotations[lineno].append(table)
         return dict(annotations)
 
@@ -143,6 +144,7 @@ class ConditionFormatter(BaseFormatter):
 
 class MMCDCFormatter(ConditionFormatter):
     max_rows_display = 20
+    metric_name = "MMC/DC Coverage"
 
     def _format_suggestion(self, suggestion: Dict[str, Any]) -> str:
         """Formats an MMC/DC suggestion pair into a nice HTML structure."""
@@ -168,70 +170,34 @@ class MMCDCFormatter(ConditionFormatter):
         </div>
         """
 
-    def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
-        annotations = collections.defaultdict(list)
-        missing_outcomes = stats.get('missing_outcomes', {})
-        for lineno, decisions in missing_outcomes.items():
-            if isinstance(decisions, dict):
-                decisions = [decisions]
+    def _render_table(self, cond_info: Dict[str, Any], conditions_count: int, condition_names: List[str]) -> str:
+        header_cols = "".join([f"<th>{html.escape(condition_names[i] if i < len(condition_names) else f'Implicit Jump {i + 1 - len(condition_names)}')}</th>" for i in range(conditions_count)])
+        header_cols += "<th>Result</th>"
+        header_row = f"<tr>{header_cols}</tr>"
 
-            for cond_info in decisions:
-                if 'ratio' in cond_info and cond_info.get('missing'):
-                    conditions_count = cond_info.get('conditions', 0)
-                    if conditions_count == 0:
-                        continue
+        executed_html = self._render_executed_rows(cond_info, conditions_count)
+        executed_table = f"<div style='margin-bottom: 10px;'><div style='font-size: 0.9em; font-weight: bold; color: #495057;'>Executed Combinations:</div><table class='condition-table'><tbody>{header_row}{executed_html}</tbody></table></div>"
 
-                    condition_names = cond_info.get('condition_names', [])
-                    header_cols = "".join(
-                        f"<th>{html.escape(condition_names[i] if i < len(condition_names) else f'Implicit Jump {i + 1 - len(condition_names)}')}</th>"
-                        for i in range(conditions_count)
-                    )
-                    header_cols += "<th>Result</th>"
-                    header_row = f"<tr>{header_cols}</tr>"
+        missing_items = cond_info.get('missing', [])
+        missing_by_idx = {item.get('condition_index', -1): item for item in missing_items}
+        summary_rows = ["<tr><th>Condition</th><th>Proven</th><th>Details</th></tr>"]
 
-                    rows = [header_row]
+        for i in range(conditions_count):
+            name = condition_names[i] if i < len(condition_names) else f"Implicit Jump {i + 1 - len(condition_names)}"
+            name_html = f"<code>{html.escape(name)}</code>"
+            if i in missing_by_idx:
+                item = missing_by_idx[i]
+                proven_html = "<span style='color: #dc3545; font-weight: bold;'>False</span>"
+                details_html = "<span style='color: #6c757d; font-style: italic;'>No independent pair possible (masked)</span>"
+                if 'suggestion' in item:
+                    details_html = self._format_suggestion(item['suggestion'])
+                summary_rows.append(f"<tr class='miss'><td>{name_html}</td><td>{proven_html}</td><td>{details_html}</td></tr>")
+            else:
+                proven_html = "<span style='color: #28a745; font-weight: bold;'>True</span>"
+                summary_rows.append(f"<tr class='hit'><td>{name_html}</td><td>{proven_html}</td><td style='color: #6c757d; font-style: italic;'>Independence proven</td></tr>")
 
-                    # Render executed items (same as base class)
-                    executed_items = cond_info.get('executed', [])
-                    for i, item in enumerate(executed_items):
-                        if self.max_rows_display and i >= self.max_rows_display and len(executed_items) > self.max_rows_display + 1:
-                            remaining = len(executed_items) - self.max_rows_display
-                            rows.append(f"<tr class='hit'><td colspan='{conditions_count + 1}' style='text-align: center; font-style: italic; color: #6c757d; background-color: #f8f9fa;'>... and {remaining} more executed combinations</td></tr>")
-                            break
-
-                        vector_html = "".join([f"<td>{html.escape(str(v))}</td>" for v in item['vector']])
-                        result_html = f"<td>{html.escape(str(item['result']))}</td>"
-                        rows.append(f"<tr class='hit'>{vector_html}{result_html}</tr>")
-
-                    # Summary Table for MMC/DC Independence
-                    missing_items = cond_info.get('missing', [])
-                    missing_by_idx = {item.get('condition_index', -1): item for item in missing_items}
-
-                    summary_rows = []
-                    summary_header = "<tr><th>Condition</th><th>Proven</th><th>Details</th></tr>"
-                    summary_rows.append(summary_header)
-
-                    for i in range(conditions_count):
-                        name = condition_names[i] if i < len(condition_names) else f"Implicit Jump {i + 1 - len(condition_names)}"
-                        name_html = f"<code>{html.escape(name)}</code>"
-
-                        if i in missing_by_idx:
-                            item = missing_by_idx[i]
-                            proven_html = "<span style='color: #dc3545; font-weight: bold;'>False</span>"
-                            details_html = "<span style='color: #6c757d; font-style: italic;'>No independent pair possible (masked)</span>"
-                            if 'suggestion' in item:
-                                details_html = self._format_suggestion(item['suggestion'])
-                            summary_rows.append(f"<tr class='miss'><td>{name_html}</td><td>{proven_html}</td><td>{details_html}</td></tr>")
-                        else:
-                            proven_html = "<span style='color: #28a745; font-weight: bold;'>True</span>"
-                            summary_rows.append(f"<tr class='hit'><td>{name_html}</td><td>{proven_html}</td><td style='color: #6c757d; font-style: italic;'>Independence proven</td></tr>")
-
-                    executed_table = f"<div style='margin-bottom: 10px;'><div style='font-size: 0.9em; font-weight: bold; color: #495057;'>Executed Combinations:</div><table class='condition-table'><tbody>{''.join(rows)}</tbody></table></div>"
-                    summary_table = f"<div><div style='font-size: 0.9em; font-weight: bold; color: #495057;'>Independence Summary:</div><table class='condition-table'><tbody>{''.join(summary_rows)}</tbody></table></div>"
-
-                    table = f"<strong>MMC/DC Coverage: {cond_info['ratio']}</strong><hr class='annotation-divider'>{executed_table}{summary_table}"
-                    annotations[lineno].append(table)
-        return dict(annotations)
+        summary_table = f"<div><div style='font-size: 0.9em; font-weight: bold; color: #495057;'>Independence Summary:</div><table class='condition-table'><tbody>{''.join(summary_rows)}</tbody></table></div>"
+        return f"<strong>{self.metric_name}: {cond_info['ratio']}</strong><hr class='annotation-divider'>{executed_table}{summary_table}"
 
     def format_console(self, stats: Dict[str, Any]) -> str:
         missing_outcomes = stats.get('missing_outcomes', {})
@@ -247,6 +213,8 @@ class MMCDCFormatter(ConditionFormatter):
 
 
 class MCCFormatter(ConditionFormatter):
+    metric_name = "MCC Coverage"
+
     def format_console(self, stats: Dict[str, Any]) -> str:
         missing_outcomes = stats.get('missing_outcomes', {})
         count = 0
@@ -258,10 +226,6 @@ class MCCFormatter(ConditionFormatter):
         if count > 0:
             return f"{count} MCC paths missed"
         return ""
-
-    def format_html(self, stats: Dict[str, Any]) -> Dict[int, List[str]]:
-        html_map = super().format_html(stats)
-        return {k: [v.replace("Condition Coverage", "MCC Coverage") for v in vals] for k, vals in html_map.items()}
 
 
 def _simple_count_formatter(name: str):

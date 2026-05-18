@@ -29,9 +29,6 @@ class ControlFlowGraph:
         self.predecessors: Dict[int, Set[int]] = {b_start: set() for b_start, _ in self.blocks}
         self._build_edges()
 
-        self.dominators: Dict[int, Set[int]] = {}
-        self._compute_dominators()
-
     def _find_leaders(self) -> Set[int]:
         """Find the starting offset of all basic blocks."""
         leaders = {0}
@@ -114,45 +111,6 @@ class ControlFlowGraph:
                 if t in self.successors:
                     self.successors[start].add(t)
                     self.predecessors[t].add(start)
-
-    def _compute_dominators(self) -> None:
-        """
-        Compute dominators for each block using a standard iterative algorithm.
-        Dom(n) = {n} U (Intersection of Dom(p) for all p in pred(n))
-        """
-        # initialize
-        all_nodes = set(self.successors.keys())
-        self.dominators = {node: all_nodes.copy() for node in all_nodes}
-
-        # start node dominates itself
-        start_node = 0
-        if start_node in self.dominators:
-            self.dominators[start_node] = {start_node}
-
-        changed = True
-        while changed:
-            changed = False
-            for node in all_nodes:
-                if node == start_node:
-                    continue
-
-                preds = self.predecessors[node]
-                if not preds:
-                    continue
-
-                # Intersection of all predecessors
-                # Start with the first predecessor's dominators
-                first_pred = next(iter(preds))
-                new_dom = self.dominators[first_pred].copy()
-
-                for p in preds:
-                    new_dom &= self.dominators[p]
-
-                new_dom.add(node)
-
-                if new_dom != self.dominators[node]:
-                    self.dominators[node] = new_dom
-                    changed = True
 
     def get_jumps(self) -> Set[Tuple[int, int]]:
         """Return all edges as (source_instruction_offset, target_instruction_offset)"""

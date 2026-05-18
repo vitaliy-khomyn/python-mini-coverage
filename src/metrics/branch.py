@@ -60,12 +60,9 @@ class BranchVisitor(NextStatementVisitor):
     def _handle_loop(self, node: Any) -> None:
         if not self.is_ignored(node):
             start = node.lineno
-            if getattr(node, 'body', None):
-                self._add_arc(start, node.body[0])
-            if getattr(node, 'orelse', None):
-                self._add_arc(start, node.orelse[0])
-            else:
-                self._add_arc(start, self._find_next_statement(node))
+            body_target, exit_target = self._get_loop_targets(node)
+            self._add_arc(start, body_target)
+            self._add_arc(start, exit_target)
         self.generic_visit(node)
 
     def visit_For(self, node: ast.For) -> None:

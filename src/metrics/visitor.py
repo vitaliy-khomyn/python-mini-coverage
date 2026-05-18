@@ -1,6 +1,6 @@
 import ast
 
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Tuple
 
 
 class BaseVisitor(ast.NodeVisitor):
@@ -66,3 +66,9 @@ class NextStatementVisitor(BaseVisitor):
         next_stmt = self._find_next_statement(parent)
         self.path.append(current_node)  # Restore path
         return next_stmt
+
+    def _get_loop_targets(self, node: ast.AST) -> Tuple[Optional[ast.AST], Optional[ast.AST]]:
+        """Returns (body_target, exit_target) for loop nodes to reduce duplication."""
+        body_target = node.body[0] if getattr(node, 'body', None) else None
+        exit_target = node.orelse[0] if getattr(node, 'orelse', None) else self._find_next_statement(node)
+        return body_target, exit_target
